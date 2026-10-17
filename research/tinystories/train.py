@@ -93,6 +93,13 @@ def main():
     ap.add_argument("--vocab", type=int, default=32768)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--tag", default="")
+    # data/<corpus>/vocab-<V>/{tokenizer.json,train.bin,val.bin}. Lets a second
+    # corpus reuse this trainer without a copy of it.
+    ap.add_argument("--corpus", default="tinystories")
+    ap.add_argument("--amp", action="store_true",
+                    help="bf16 autocast; off by default so published runs replay")
+    ap.add_argument("--save-every", type=int, default=0,
+                    help="also write <name>-mid.pt every N steps")
     args = ap.parse_args()
 
     # Before anything expensive: the tokenizer that produced these bins. Its
@@ -103,13 +110,16 @@ def main():
         raise SystemExit(f"--vocab must be 1..65536; the token bins are uint16 "
                          f"and are memmapped as uint16")
 
+    global DATA
+    DATA = ROOT / "data" / args.corpus
     dataset = variant_dir(args.vocab)
     tok_path = dataset / "tokenizer.json"
     if not os.path.exists(tok_path):
         raise SystemExit(
             f"{tok_path} missing. The bins this run trains on came from it, and "
             f"without its hash the checkpoint cannot be tied to a tokenizer. "
-            f"Run: python -m research.tinystories.prepare --vocab {args.vocab}")
+            f"Run: python -m research.{args.corpus.replace('-', '_')}."
+            f"prepare --vocab {args.vocab}")
     tok_sha = hashlib.sha256(open(tok_path, "rb").read()).hexdigest()
 
     torch.manual_seed(args.seed)
@@ -139,17 +149,28 @@ def main():
     name = f"{args.arm}{'-' + args.tag if args.tag else ''}-s{args.seed}"
     history, best = [], float("inf")
     t0 = time.time()
+    # bf16 autocast only on cuda: on mps/cpu it is slower or unsupported, and the
+    # published runs were fp32, so leaving it off keeps them reproducible.
+    amp_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16,
+                                 enabled=args.amp and device == "cuda")
 
     for step in range(args.steps):
         lr = lr_at(step, args.steps, args.lr, args.warmup)
         for g in opt.param_groups:
             g["lr"] = lr
         x, y = train_b()
-        _, loss = model(x, y)
+        with amp_ctx:
+            _, loss = model(x, y)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
+
+        if args.save_every and step and step % args.save_every == 0:
+            torch.save({"cfg": cfg.__dict__, "state": model.state_dict(),
+                        "tokenizer_sha256": tok_sha, "seed": args.seed,
+                        "tag": args.tag, "name": name, "mid_step": step},
+                       os.path.join(RUNS, f"{name}-mid.pt"))
 
         if step % args.eval_every == 0 or step == args.steps - 1:
             vl = evaluate(model, val_b, args.eval_iters)

@@ -121,7 +121,11 @@ def main():
                          "becomes output_vocab")
     ap.add_argument("--allow-unverified-tokenizer", action="store_true",
                     help="export from a checkpoint that records no tokenizer hash")
+    # artifacts/<out>/: a second corpus exports beside the first instead of over.
+    ap.add_argument("--out", default=OUT)
     args = ap.parse_args()
+    global OUT
+    OUT = args.out
     tag = args.tag
     os.makedirs(OUT, exist_ok=True)
     ck = torch.load(os.path.join(RUNS, f"{tag}.pt"), map_location="cpu", weights_only=False)

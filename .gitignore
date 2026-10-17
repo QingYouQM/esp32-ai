@@ -10,6 +10,9 @@ __pycache__/
 # training outputs
 runs/
 
+# downloaded teacher model (multi-GB); fetch with research/zh/synth.py
+/models/
+
 # model artifacts: fetched from the model registry, or written by the
 # reproduction exporter
 /artifacts/

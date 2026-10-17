@@ -7,11 +7,14 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
+    "jieba>=0.42.1",
     "numpy>=2.5.1",
+    "pyarrow>=26.0.0",
     "requests>=2.34.2",
     "tokenizers>=0.23.1",
     "torch>=2.13.0",
     "tqdm>=4.69.0",
+    "transformers>=5.20.1",
 ]
 
 # scripts/benchmark_device.py talks to the board over USB serial. Only needed to
@@ -27,3 +30,13 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 package-dir = { "" = "src" }
 py-modules = ["model", "quantize"]
+
+# The default Windows wheel is CPU-only, which trains this model about two
+# orders of magnitude too slowly. Pin torch to the CUDA 13.0 index instead.
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130" }]
