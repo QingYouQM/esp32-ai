@@ -18,6 +18,7 @@ param(
 
 $root  = Split-Path -Parent $PSScriptRoot
 $synth = Join-Path $root "data/zh/raw/synth.jsonl"
+$story = Join-Path $root "data/zh/raw/synth_story.jsonl"
 $topics = Join-Path $root "data/zh/raw/topics.jsonl"
 $trainBin = Join-Path $root "data/zh/train.bin"
 $corpus = Join-Path $root "data/zh/raw/corpus.txt"
@@ -66,8 +67,8 @@ function Get-LogTail([string]$pattern, [int]$n = 3) {
            Where-Object { $_ -notmatch 'Loading weights' }
 }
 
-function Get-LastParagraph {
-    $lines = Read-LinesShared $synth
+function Get-LastParagraph([string]$p) {
+    $lines = Read-LinesShared $p
     if ($lines.Count -eq 0) { return $null }
     $last = $lines[-1]
     if (-not $last) { return $null }
@@ -81,7 +82,7 @@ function Get-LastParagraph {
 # run resumes from however many paragraphs already exist, so the file count and
 # the job's denominator differ. Prefer it unless -Target was passed explicitly.
 $logTarget = 0
-$tl = Get-LogTail "synth_full*.log" 1
+$tl = Get-LogTail "synth_*full*.log" 1
 if ($tl -and $tl -match '(\d+)/(\d+)') { $logTarget = [int]$Matches[2] }
 $eff = if ($Target -gt 0) { $Target }
        elseif ($logTarget -gt 0) { $logTarget } else { 20000 }
@@ -95,7 +96,10 @@ while ($true) {
     # Clear-Host throws "handle is invalid" when stdout is redirected.
     try { Clear-Host } catch { Write-Host ("-" * 46) }
     $now    = Get-Date
-    $count  = Count-Lines $synth
+    # Whichever corpus file exists later in the pipeline is the active job;
+    # right now that is the story run, earlier it was the explanatory one.
+    $active = if (Test-Path $story) { $story } else { $synth }
+    $count  = Count-Lines $active
     $dt     = ($now - $prevTime).TotalSeconds
     $speed  = if ($dt -gt 0.5) { ($count - $prevCount) / $dt } else { 0 }
     $avg    = if (($now - $startTime).TotalSeconds -gt 1) {
@@ -118,7 +122,7 @@ while ($true) {
     Write-Host ""
     Write-Host (Get-Gpu)
 
-    $para = Get-LastParagraph
+    $para = Get-LastParagraph $active
     if ($para) {
         Write-Host ""
         Write-Host "[最新样本]" -ForegroundColor Yellow
@@ -129,11 +133,12 @@ while ($true) {
     Write-Host ""
     Write-Host "[文件]"
     Write-Host ("        主题池   {0} 条" -f (Count-Lines $topics))
-    Write-Host ("        合成     {0} 段  ({1})" -f $count, (Get-Size $synth))
+    Write-Host ("        说明文   {0} 段  ({1})" -f (Count-Lines $synth), (Get-Size $synth))
+    Write-Host ("        故事     {0} 段  ({1})" -f (Count-Lines $story), (Get-Size $story))
     Write-Host ("        语料     {0}" -f (Get-Size $corpus))
     Write-Host ("        train.bin {0}" -f (Get-Size $trainBin))
 
-    foreach ($spec in @(@("synth_full*.log", "合成日志"), @("train*.log", "训练日志"),
+    foreach ($spec in @(@("synth_*full*.log", "合成日志"), @("train*.log", "训练日志"),
                         @("sample*.log", "采样输出"))) {
         $tail = Get-LogTail $spec[0] 3
         if ($tail) {

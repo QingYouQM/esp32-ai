@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data" / "zh"
 SYNTH = DATA / "raw" / "synth.jsonl"
+STORY = DATA / "raw" / "synth_story.jsonl"
 WIKI = DATA / "raw" / "wiki_corpus.txt"
 CORPUS = DATA / "raw" / "corpus.txt"
 EOT = "<|endoftext|>"
@@ -109,6 +110,23 @@ def build_corpus(synth_chars, wiki_chars):
                 if n >= synth_chars:
                     break
         print(f"synth: {kept:,} paragraphs, {n / 1e6:.1f}M chars")
+    if synth_chars and os.path.exists(STORY):
+        n = 0
+        kept = 0
+        with open(STORY, encoding="utf-8") as f:
+            for line in f:
+                text = json.loads(line)["text"].strip()
+                if not text:
+                    continue
+                text = clean_doc(text, stats)
+                if not text:
+                    continue
+                parts.append(text)
+                kept += 1
+                n += len(text)
+                if synth_chars and n >= synth_chars:
+                    break
+        print(f"story: {kept:,} paragraphs, {n / 1e6:.1f}M chars")
     if wiki_chars and os.path.exists(WIKI):
         n = 0
         k = 0

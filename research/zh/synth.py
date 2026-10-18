@@ -75,6 +75,20 @@ WRITE_PROMPTS = [
     "要求自然、通顺、有细节；只输出正文。",
 ]
 
+# Narrative mode: one consistent register, TinyStories-style. Everything the
+# model sees is a story, so "write a story" is the one thing it learns well.
+STORY_PROMPTS = [
+    "请写一篇 150 到 200 字的中文短篇故事，讲的是{topic}的故事。"
+    "要求：有具体情节，有开头和结尾，语言简单流畅，适合儿童阅读；"
+    "只输出故事正文，不要标题，不要分点，不要任何说明。",
+
+    "请围绕「{topic}」写一个 150 到 200 字的温馨小故事。"
+    "要求：情节完整、语句通顺、用词简单自然；只输出正文。",
+
+    "请以「{topic}」为题材写一个 150 到 200 字的中文小故事，"
+    "要有画面感和细节，结尾自然；只输出故事正文。",
+]
+
 CJK = re.compile(r"[\u4e00-\u9fff]")
 NOISE = re.compile(r"^[\s]*(好的|以下是|当然|没问题|这是一段|短文[:：])?[^\u4e00-\u9fff]{0,12}[:：]?\s*")
 TAIL_OK = ("。", "！", "？", "”", "」", ".", "!", "?")
@@ -212,7 +226,8 @@ def stage_write(tok, model, device, args):
     kept = 0
     for i in range(0, len(todo), args.batch_size):
         batch = todo[i: i + args.batch_size]
-        prompts = [WRITE_PROMPTS[v].format(topic=t) for t, v in batch]
+        prompt_src = STORY_PROMPTS if args.mode == "story" else WRITE_PROMPTS
+        prompts = [prompt_src[v % len(prompt_src)].format(topic=t) for t, v in batch]
         texts = generate_batch(tok, model, prompts, device, args.max_new_tokens,
                                args.temperature, args.top_p)
         for (topic, _v), raw in zip(batch, texts):
@@ -254,6 +269,8 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="pilot: only first N items")
     ap.add_argument("--variants", type=int, default=12,
                     help="prompt templates per topic; total = topics * variants")
+    ap.add_argument("--mode", default="explanatory", choices=["explanatory", "story"],
+                    help="prompt register: explanatory essays or narrative stories")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--dtype", default="bfloat16")
     args = ap.parse_args()
