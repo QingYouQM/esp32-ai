@@ -17,9 +17,12 @@
 | 教师模型 | Qwen2.5-1.5B-Instruct，3.09GB，缓存在 `models/`（已 gitignore） |
 | 公开语料 | 中文维基 245,572 段 / **6000 万字符** → `data/zh/raw/wiki_corpus.txt` |
 | 主题池 | **12,000** 个中文主题词（jieba 从维基挖掘）→ `data/zh/raw/topics.jsonl` |
-| 合成语料 | **1,337 段** → `data/zh/raw/synth.jsonl`（脚本断点续跑，中断不丢） |
+| 合成语料 | **20,610 段** / 15.5 MB → `data/zh/raw/synth.jsonl`（12,000 主题 × 5 种 prompt 变体，保留率 99.3%，已全部完成） |
 | 训练链路 | 冒烟 200 步通过：**8 步/秒**，val ppl 16923 → 1624 |
-| 吞吐实测 | 合成生成 **4.6 段/秒**（batch 192）；训练不是瓶颈，数据生成才是 |
+| 吞吐实测 | 合成生成 **4.4 段/秒**（batch 192）；训练不是瓶颈，数据生成才是 |
+
+**当前停在正式训练之前，等用户确认再开跑**（已确认方案：先 5000 步验货，
+不满意从零重训 10000 步；cosine 调度按总步数衰减，不做中途续训）。
 
 ## 模型配置（`--target-core 3000000` 自动解得 ffn=265）
 
@@ -67,10 +70,10 @@ uv run python -m research.tinystories.export zh-s0 --tokenizer data/zh/tokenizer
 
 ## 待办
 
-1. 合成语料放量（当前 1,337 段，目标 2~5 万段）
+1. ~~合成语料放量~~ 已完成：20,610 段（用户确认暂停于训练前）
 2. 训 BPE 时注意压缩率：纯维基实测 **1.14 汉字/token**；混入合成语料后应回升，
    若仍 < 1.2，200 汉字段落会撑爆 512 上下文，需要加大 vocab 或 seq_len
-3. 正式训练（core 3M）
+3. 正式训练（core 3M，先 5000 步，用户确认后开跑）
 4. **端侧固件适配**（尚未动手）：
    - `firmware/esp32_tinystories/esp32_tinystories.ino:38` `PROMPT_IDS` 换成中文 prompt
    - `ino:39` `N_GENERATE = 200` 是 **token 数不是字数**，按 1.14 汉字/token 需 ~230
