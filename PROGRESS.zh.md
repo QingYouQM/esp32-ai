@@ -33,10 +33,37 @@
 
 - 纯故事域匹配净赢旧混合语料 **0.43 nats**（4.679 → 4.2459）
 - 生成样本：故事语感已锁定（无百科残留），但逻辑连贯性差、不会在结尾吐 EOT 停止，会连续串多个故事——208 万 token 对 22.9M 参数太薄，数据墙结论不变
-- 下一步真瓶颈：扩 story_topics.py 的 CHARACTERS/SITUATIONS 放量生成（当前 2,400 主题池已用 59%）
+- 下一步真瓶颈：扩 story_topics.py 的 CHARACTERS/SITUATIONS 放量生成（实际旧池 2,800 主题已 100% 用完，每主题 ~6 篇；旧记录"2,400 池已用 59%"有误）
 
 **当前停在正式训练之前，等用户确认再开跑**（已确认方案：先 5000 步验货，
 不满意从零重训 10000 步；cosine 调度按总步数衰减，不做中途续训）。
+
+## 语料放量（进行中，2026-10-20 起）
+
+story_topics.py 池子扩充：CHARACTERS 52→106、SITUATIONS 49→106（共 11,130 组合），
+用 `--exclude` 剔除旧 corpus 已用的 2,800 个主题，余 **8,224 个新主题** → `story_topics_v2.json`。
+蒸馏写到独立文件 `synth_story_v2.jsonl`（jsonl 逐行追加，按行数断点续跑，中断不重复、不错位）。
+目标 8,224 × 3 prompt 变体 = **24,672 篇**；已产 9,970 篇（约 40 分钟，用户关机暂停）。
+
+**关机暂停后的恢复命令**（参数必须一致，否则行数计数对不上）：
+
+```bash
+uv run python -m research.zh.synth --stage write --mode story \
+  --topics data/zh/raw/story_topics_v2.json \
+  --out data/zh/raw/synth_story_v2.jsonl \
+  --batch-size 192 --variants 3 --max-new-tokens 240
+```
+
+**跑完后的收尾**：
+
+```bash
+# 1. 合并新旧故事语料
+cat data/zh/raw/synth_story_v2.jsonl >> data/zh/raw/synth_story.jsonl
+# 2. 删掉旧打包产物（否则 prepare_zh 被 "already have" 短路）
+rm data/zh/raw/corpus.txt data/zh/vocab-16384/{tokenizer.json,train.bin,val.bin}
+# 3. 重训 BPE + 重打包（预期 ~4.1 万篇 / 1000 万字 / ~500 万 token）
+uv run python -m research.zh.prepare_zh --vocab 16384
+```
 
 ## 模型配置（`--target-core 3000000` 自动解得 ffn=265）
 
