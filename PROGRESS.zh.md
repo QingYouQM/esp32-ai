@@ -5,7 +5,7 @@
 
 ## 方向（已确认）
 
-- 语料：**大模型蒸馏合成 + 公开中文语料**混合
+- 语料：**纯故事蒸馏合成**（150~200 字短篇故事；维基/百科内容已从管线剔除，2026-10-19 起 story-only）
 - 取向：**质量优先**，core 从 559K 扩到 ~3M，代价是推理从 ~10 tok/s 降到 ~5 tok/s
 - 词表：自训 ByteLevel BPE，**vocab 16384**
 
@@ -20,6 +20,20 @@
 | 合成语料 | **20,610 段** / 15.5 MB → `data/zh/raw/synth.jsonl`（12,000 主题 × 5 种 prompt 变体，保留率 99.3%，已全部完成） |
 | 训练链路 | 冒烟 200 步通过：**8 步/秒**，val ppl 16923 → 1624 |
 | 吞吐实测 | 合成生成 **4.4 段/秒**（batch 192）；训练不是瓶颈，数据生成才是 |
+
+## 纯故事管线实验结果（2026-10-19）
+
+剔除百科/维基后（synth_story.jsonl 16,604 篇 / 414 万字符，重训 BPE 后 1.75 汉字/token）：
+
+| run | 步数 | best val | final val | 备注 |
+|---|---:|---:|---:|---|
+| ple-zh-story-s0 | 5000 | **4.3465**@1250 | 6.1347 | 1250 步后纯过拟合（train 0.70 / val ppl 462），存档为 final 权重勿用 |
+| ple-zh-story2-s0 | 1500 | 4.2459 | 4.2459 | cosine 衰减终点即最优点，**当前最佳 checkpoint** |
+| （旧参照）ple-zh-s0 | 5000 | 4.679 | 4.679 | 百科+故事混合语料 |
+
+- 纯故事域匹配净赢旧混合语料 **0.43 nats**（4.679 → 4.2459）
+- 生成样本：故事语感已锁定（无百科残留），但逻辑连贯性差、不会在结尾吐 EOT 停止，会连续串多个故事——208 万 token 对 22.9M 参数太薄，数据墙结论不变
+- 下一步真瓶颈：扩 story_topics.py 的 CHARACTERS/SITUATIONS 放量生成（当前 2,400 主题池已用 59%）
 
 **当前停在正式训练之前，等用户确认再开跑**（已确认方案：先 5000 步验货，
 不满意从零重训 10000 步；cosine 调度按总步数衰减，不做中途续训）。
@@ -55,8 +69,10 @@ PSRAM 是硬约束：int8 staged(core+head) ≈ 6.15MB + KV cache 必须 < 8MB�
 #    建议跑到 2~3 万段就先停，训一版看效果，不够再加料
 uv run python -m research.zh.synth --stage write --batch-size 192
 
-# 2. 打包语料 + 训 BPE
-uv run python -m research.zh.prepare_zh --vocab 16384 --wiki-chars 40000000
+# 2. 打包语料 + 训 BPE（纯故事；首次重跑需先删掉 data/zh/vocab-16384/ 下三个旧产物，
+#    否则 corpus.txt / tokenizer.json 会被 "already have" 短路，用的还是百科混合旧料）
+#    rm data/zh/raw/corpus.txt data/zh/vocab-16384/{tokenizer.json,train.bin,val.bin}
+uv run python -m research.zh.prepare_zh --vocab 16384
 
 # 3. 训练（2 万步约 42 分钟）
 uv run python -m research.tinystories.train --arm ple --corpus zh --vocab 16384 \

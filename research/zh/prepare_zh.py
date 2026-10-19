@@ -4,7 +4,7 @@ Same contract as research/tinystories/prepare.py (uint16 bins, one shared
 tokenizer per vocabulary variant, <|endoftext|> as the document separator) so
 the existing train.py / export.py paths work untouched. What differs:
 
-  * the corpus is a mix of teacher-generated paragraphs and wiki paragraphs
+  * the corpus is story-only: teacher-generated short stories, nothing else
   * the metric that matters is hanzi per token, not bytes per token: a tokenizer
     that needs 3 tokens per hanzi would put a 200-hanzi paragraph out of reach
     of a 512-token context.
@@ -27,9 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data" / "zh"
-SYNTH = DATA / "raw" / "synth.jsonl"
 STORY = DATA / "raw" / "synth_story.jsonl"
-WIKI = DATA / "raw" / "wiki_corpus.txt"
 CORPUS = DATA / "raw" / "corpus.txt"
 EOT = "<|endoftext|>"
 DEFAULT_VOCAB = 16384
@@ -86,31 +84,14 @@ def variant_dir(vocab_size):
     return DATA / f"vocab-{vocab_size}"
 
 
-def build_corpus(synth_chars, wiki_chars):
-    """Join both sources into one cleaned, document-separated text file."""
+def build_corpus(story_chars):
+    """Join the story source into one cleaned, document-separated text file."""
     if os.path.exists(CORPUS):
         print(f"already have {CORPUS}")
         return
     stats = Counter()
     parts = []
-    if synth_chars and os.path.exists(SYNTH):
-        n = 0
-        kept = 0
-        with open(SYNTH, encoding="utf-8") as f:
-            for line in f:
-                text = json.loads(line)["text"].strip()
-                if not text:
-                    continue
-                text = clean_doc(text, stats)
-                if not text:
-                    continue
-                parts.append(text)
-                kept += 1
-                n += len(text)
-                if n >= synth_chars:
-                    break
-        print(f"synth: {kept:,} paragraphs, {n / 1e6:.1f}M chars")
-    if synth_chars and os.path.exists(STORY):
+    if os.path.exists(STORY):
         n = 0
         kept = 0
         with open(STORY, encoding="utf-8") as f:
@@ -124,32 +105,16 @@ def build_corpus(synth_chars, wiki_chars):
                 parts.append(text)
                 kept += 1
                 n += len(text)
-                if synth_chars and n >= synth_chars:
+                if n >= story_chars:
                     break
         print(f"story: {kept:,} paragraphs, {n / 1e6:.1f}M chars")
-    if wiki_chars and os.path.exists(WIKI):
-        n = 0
-        k = 0
-        with open(WIKI, encoding="utf-8") as f:
-            for line in f:
-                text = line.strip()
-                if not text:
-                    continue
-                text = clean_doc(text, stats)
-                if not text:
-                    continue
-                parts.append(text)
-                k += 1
-                n += len(text)
-                if n >= wiki_chars:
-                    break
-        print(f"wiki:  {k:,} paragraphs, {n / 1e6:.1f}M chars")
     if not parts:
         raise SystemExit(
-            f"no corpus found. Generate one first:\n"
-            f"  uv run python -m research.zh.synth --stage topics\n"
-            f"  uv run python -m research.zh.synth --stage write\n"
-            f"  uv run python -m research.zh.wiki_extract data/zh/raw/*.parquet")
+            f"no story corpus found. Generate one first:\n"
+            f"  uv run python -m research.zh.story_topics --n 6000\n"
+            f"  uv run python -m research.zh.synth --stage write --mode story \\n"
+            f"      --topics data/zh/raw/story_topics.json \\n"
+            f"      --out data/zh/raw/synth_story.jsonl")
     total = stats["leak"] + stats["latin"] + stats["repeat"]
     print(f"dropped: {total:,} docs "
           f"(leak {stats['leak']:,}, latin-run {stats['latin']:,}, "
@@ -184,15 +149,14 @@ def train_tokenizer(text, vocab_size):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vocab", type=int, default=DEFAULT_VOCAB)
-    ap.add_argument("--synth-chars", type=int, default=120_000_000)
-    ap.add_argument("--wiki-chars", type=int, default=40_000_000)
+    ap.add_argument("--story-chars", type=int, default=200_000_000)
     args = ap.parse_args()
     if not 0 < args.vocab <= 65536:
         raise SystemExit("--vocab must be 1..65536; the bins are uint16")
 
     out = variant_dir(args.vocab)
     out.mkdir(parents=True, exist_ok=True)
-    build_corpus(args.synth_chars, args.wiki_chars)
+    build_corpus(args.story_chars)
 
     with open(CORPUS, "r", encoding="utf-8", errors="ignore") as f:
         text = f.read()
