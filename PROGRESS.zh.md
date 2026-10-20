@@ -28,11 +28,24 @@
 | run | 步数 | best val | final val | 备注 |
 |---|---:|---:|---:|---|
 | ple-zh-story-s0 | 5000 | **4.3465**@1250 | 6.1347 | 1250 步后纯过拟合（train 0.70 / val ppl 462），存档为 final 权重勿用 |
-| ple-zh-story2-s0 | 1500 | 4.2459 | 4.2459 | cosine 衰减终点即最优点，**当前最佳 checkpoint** |
+| ple-zh-story2-s0 | 1500 | 4.2459 | 4.2459 | cosine 衰减终点即最优点，**前冠军** |
 | （旧参照）ple-zh-s0 | 5000 | 4.679 | 4.679 | 百科+故事混合语料 |
 
+## 放量后首训（2026-10-20，40,995 篇 / 1010 万字 / 523 万 token）
+
+同架构同配方（batch 16 × seq 512，5000 步，8 分钟）：
+
+| run | best val | final val | 备注 |
+|---|---:|---:|---|
+| ple-zh-story3-s0 | **3.9416**@3250 | 3.9831 | 较前冠军净赢 **0.30 nats** |
+
+- val 在 3250 步见底（ppl 51.5），之后过拟合抬头：train 一路降到 2.57，val 回升到 3.98
+- **教训：--save-every 没开，最优点 3250 的权重没保住**，.pt 存的是终点；下次补齐 save_every=250
+- 定性未见质变：故事语感锁定、无百科残留，但依旧串故事（一个 prompt 后面跟着不相关的第二个故事）、不会在结尾吐 EOT、逻辑漂移仍在
+- 结论：**2.5 倍数据 ≈ +0.30 nats**，天花板仍受 523 万 token / 22.9M 参数约束；要继续压 val 得继续扩语料，加步数只会加剧过拟合
+
 - 纯故事域匹配净赢旧混合语料 **0.43 nats**（4.679 → 4.2459）
-- 生成样本：故事语感已锁定（无百科残留），但逻辑连贯性差、不会在结尾吐 EOT 停止，会连续串多个故事——208 万 token 对 22.9M 参数太薄，数据墙结论不变
+- 生成样本：故事语感已锁定（无百科残留），但逻辑连贯性差、不会在结尾吐 EOT 停止，会连续串多个故事——当时归因于数据墙；放量 2.5 倍后（见上节）此痼疾仍在，非单纯数据量问题
 - 下一步真瓶颈：扩 story_topics.py 的 CHARACTERS/SITUATIONS 放量生成（实际旧池 2,800 主题已 100% 用完，每主题 ~6 篇；旧记录"2,400 池已用 59%"有误）
 
 **当前停在正式训练之前，等用户确认再开跑**（已确认方案：先 5000 步验货，
@@ -92,10 +105,11 @@ uv run python -m research.zh.synth --stage write --mode story \
 #    rm data/zh/raw/corpus.txt data/zh/vocab-16384/{tokenizer.json,train.bin,val.bin}
 uv run python -m research.zh.prepare_zh --vocab 16384
 
-# 3. 训练（2 万步约 42 分钟）
+# 3. 训练（5000 步约 8 分钟；务必加 --save-every 250 保住最优点权重）
 uv run python -m research.tinystories.train --arm ple --corpus zh --vocab 16384 \
   --d-model 192 --n-layers 8 --n-heads 4 --ple-dim 128 --seq-len 512 \
-  --target-core 3000000 --batch-size 16 --steps 20000 --tag zh --amp
+  --target-core 3000000 --batch-size 16 --steps 5000 --tag zh-story3 \
+  --save-every 250 --amp
 
 # 4. 导出（--out 隔离中文产物）
 uv run python -m research.tinystories.export zh-s0 --tokenizer data/zh/tokenizer.json \
