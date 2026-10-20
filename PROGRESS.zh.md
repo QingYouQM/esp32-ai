@@ -38,32 +38,20 @@
 **当前停在正式训练之前，等用户确认再开跑**（已确认方案：先 5000 步验货，
 不满意从零重训 10000 步；cosine 调度按总步数衰减，不做中途续训）。
 
-## 语料放量（进行中，2026-10-20 起）
+## 语料放量（已完成，2026-10-20）
 
 story_topics.py 池子扩充：CHARACTERS 52→106、SITUATIONS 49→106（共 11,130 组合），
-用 `--exclude` 剔除旧 corpus 已用的 2,800 个主题，余 **8,224 个新主题** → `story_topics_v2.json`。
-蒸馏写到独立文件 `synth_story_v2.jsonl`（jsonl 逐行追加，按行数断点续跑，中断不重复、不错位）。
-目标 8,224 × 3 prompt 变体 = **24,672 篇**；已产 9,970 篇（约 40 分钟，用户关机暂停）。
+用 `--exclude` 剔除旧 corpus 已用的 2,800 个主题，余 **8,224 个新主题**，蒸馏产出
+24,655 篇（保留率 99.9%），与旧的 16,778 篇合并后共 41,433 篇。合并前曾因用户关机
+中断于 9,970 篇，按行数断点续跑无损恢复。
 
-**关机暂停后的恢复命令**（参数必须一致，否则行数计数对不上）：
+打包（`prepare_zh`，清晰洗后）：
+- 语料 **40,995 篇 / 1,010 万字**（dropped 438：leak 263、latin-run 17、repeat 158）
+- **train 5,208,396 token / val 26,172 token**（旧版仅 208 万，**2.5 倍**）
+- 压缩率 1.73 汉字/token（与旧版 1.75 持平，512 上下文装 200 汉字仍宽裕）
 
-```bash
-uv run python -m research.zh.synth --stage write --mode story \
-  --topics data/zh/raw/story_topics_v2.json \
-  --out data/zh/raw/synth_story_v2.jsonl \
-  --batch-size 192 --variants 3 --max-new-tokens 240
-```
-
-**跑完后的收尾**：
-
-```bash
-# 1. 合并新旧故事语料
-cat data/zh/raw/synth_story_v2.jsonl >> data/zh/raw/synth_story.jsonl
-# 2. 删掉旧打包产物（否则 prepare_zh 被 "already have" 短路）
-rm data/zh/raw/corpus.txt data/zh/vocab-16384/{tokenizer.json,train.bin,val.bin}
-# 3. 重训 BPE + 重打包（预期 ~4.1 万篇 / 1000 万字 / ~500 万 token）
-uv run python -m research.zh.prepare_zh --vocab 16384
-```
+下一步：正式训练（训练时长约为旧版的 2.5 倍，先 5000 步验货）。若还想再放量，
+story_topics.py 里角色/情境池还能继续加，`--exclude` 机制保证不重复生成。
 
 ## 模型配置（`--target-core 3000000` 自动解得 ffn=265）
 
@@ -92,9 +80,12 @@ PSRAM 是硬约束：int8 staged(core+head) ≈ 6.15MB + KV cache 必须 < 8MB�
 ## 恢复命令
 
 ```bash
-# 1. 继续生成合成语料（143,237 段全跑完约 8.7 小时；可随时中断，下次续跑）
-#    建议跑到 2~3 万段就先停，训一版看效果，不够再加料
-uv run python -m research.zh.synth --stage write --batch-size 192
+# 1. 继续故事语料放量（如需再扩池：先加 story_topics.py 的 CHARACTERS/SITUATIONS，
+#    再生成剔除已用主题的新池，然后 below 命令；jsonl 按行数断点续跑，参数须一致）
+uv run python -m research.zh.synth --stage write --mode story \
+  --topics data/zh/raw/story_topics_v2.json \
+  --out data/zh/raw/synth_story_v2.jsonl \
+  --batch-size 192 --variants 3 --max-new-tokens 240
 
 # 2. 打包语料 + 训 BPE（纯故事；首次重跑需先删掉 data/zh/vocab-16384/ 下三个旧产物，
 #    否则 corpus.txt / tokenizer.json 会被 "already have" 短路，用的还是百科混合旧料）
@@ -113,7 +104,7 @@ uv run python -m research.tinystories.export zh-s0 --tokenizer data/zh/tokenizer
 
 ## 待办
 
-1. ~~合成语料放量~~ 已完成：20,610 段（用户确认暂停于训练前）
+1. ~~合成语料放量~~ 已完成（2026-10-20）：41,433 篇合并，40,995 篇入 train，523 万 token（208 万的 2.5 倍）
 2. 训 BPE 时注意压缩率：纯维基实测 **1.14 汉字/token**；混入合成语料后应回升，
    若仍 < 1.2，200 汉字段落会撑爆 512 上下文，需要加大 vocab 或 seq_len
 3. 正式训练（core 3M，先 5000 步，用户确认后开跑）
