@@ -21,7 +21,8 @@ import sys
 import time
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import (AutoModelForCausalLM, AutoModelForImageTextToText,
+                         AutoTokenizer)
 
 from pathlib import Path
 
@@ -142,19 +143,38 @@ def load_model(path, device, dtype):
         tok.pad_token = tok.eos_token
     # sdpa matters: the default attention path made a 1.5B teacher generate at
     # ~13 tok/s on a 4060, which puts a real corpus out of reach.
-    model = AutoModelForCausalLM.from_pretrained(
-        path, dtype=dtype, attn_implementation="sdpa")
+    # Qwen3.5 checkpoints are conditional-generation (multimodal) classes even
+    # when used text-only; pick the class from the architecture so one code
+    # path serves both the old CausalLM teacher and the new one.
+    cfg = json.load(open(Path(path) / "config.json", encoding="utf-8"))
+    if any("ForConditionalGeneration" in a
+           for a in cfg.get("architectures", [])):
+        cls = AutoModelForImageTextToText
+    else:
+        cls = AutoModelForCausalLM
+    model = cls.from_pretrained(path, dtype=dtype, attn_implementation="sdpa")
     model.to(device)
     model.eval()
     return tok, model
 
 
 @torch.no_grad()
-def generate_batch(tok, model, prompts, device, max_new_tokens, temperature, top_p):
+def generate_batch(tok, model, prompts, device, max_new_tokens, temperature, top_p,
+                  top_k=None, chat_template=False):
+    if chat_template:
+        # Instruct checkpoints expect the chat wrapper; the legacy 1.5B path
+        # feeds the prompt as raw text and the corpus was built that way, so
+        # this stays opt-in. enable_thinking is honored by Qwen3.5 templates
+        # (non-thinking is its default anyway) and ignored by older ones.
+        prompts = [
+            tok.apply_chat_template(
+                [{"role": "user", "content": p}],
+                tokenize=False, add_generation_prompt=True,
+                enable_thinking=False)
+            for p in prompts]
     enc = tok(prompts, return_tensors="pt", padding=True, truncation=True,
               max_length=512).to(device)
-    out = model.generate(
-        **enc,
+    gen_kwargs = dict(
         max_new_tokens=max_new_tokens,
         do_sample=True,
         temperature=temperature,
@@ -162,6 +182,9 @@ def generate_batch(tok, model, prompts, device, max_new_tokens, temperature, top
         pad_token_id=tok.pad_token_id,
         eos_token_id=tok.eos_token_id,
     )
+    if top_k:
+        gen_kwargs["top_k"] = top_k
+    out = model.generate(**enc, **gen_kwargs)
     gen = out[:, enc["input_ids"].shape[1]:]
     return tok.batch_decode(gen, skip_special_tokens=True)
 
@@ -229,7 +252,9 @@ def stage_write(tok, model, device, args):
         prompt_src = STORY_PROMPTS if args.mode == "story" else WRITE_PROMPTS
         prompts = [prompt_src[v % len(prompt_src)].format(topic=t) for t, v in batch]
         texts = generate_batch(tok, model, prompts, device, args.max_new_tokens,
-                               args.temperature, args.top_p)
+                               args.temperature, args.top_p,
+                               top_k=args.top_k or None,
+                               chat_template=args.apply_chat_template)
         for (topic, _v), raw in zip(batch, texts):
             text = clean(raw)
             text = trim_to_han(text, args.min_han, args.max_han)
@@ -248,7 +273,7 @@ def stage_write(tok, model, device, args):
         print(f"  {i + len(batch)}/{len(todo)} kept={kept} "
               f"({rate:.1f} para/s, {time.time() - t0:.0f}s)", flush=True)
     f.close()
-    print(f"done: {kept} paragraphs -> {OUT}")
+    print(f"done: {kept} paragraphs -> {args.out}")
 
 
 def main():
@@ -264,6 +289,11 @@ def main():
     ap.add_argument("--max-new-tokens", type=int, default=240)
     ap.add_argument("--temperature", type=float, default=0.9)
     ap.add_argument("--top-p", type=float, default=0.95)
+    ap.add_argument("--top-k", type=int, default=0,
+                    help="top-k sampling; 0 leaves the library default")
+    ap.add_argument("--apply-chat-template", action="store_true",
+                    help="wrap prompts in the tokenizer chat template "
+                         "(instruct checkpoints; Qwen3.5 non-thinking)")
     ap.add_argument("--min-han", type=int, default=140)
     ap.add_argument("--max-han", type=int, default=205)
     ap.add_argument("--limit", type=int, default=0, help="pilot: only first N items")
