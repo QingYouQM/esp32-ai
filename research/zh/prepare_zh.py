@@ -59,6 +59,37 @@ def ngram_repeat_ratio(text, n=6):
     return repeated / len(grams)
 
 
+# Sentence-internal loops. The teacher stutters inside a single sentence
+# ("美丽、美丽", "埃及、埃及、埃及") or repeats a whole clause; those survive
+# the document-level 6-gram gate because one sentence is too short for its 5%
+# threshold. Two unambiguous shapes are caught: a 2-4 character unit repeated
+# around a "、", and any 8-character substring twice in one sentence (only a
+# clause loop produces that). Deliberately narrow -- a plain 4-character
+# repeat rule fired on ordinary phrases ("慢慢地", "小乌龟", "找到了") that
+# simply occur twice, and parallel structure shares too few characters to
+# clear the 8-gram floor. Shorter repeats are also legitimate Chinese: AABB
+# reduplication ("高高兴兴"), ABAB ("研究研究") and A又A ("一天又一天") stay.
+SENT_SPLIT = re.compile(r"[。！？!?]")
+DUNHAO = "、"
+
+
+def sentence_repeat(text):
+    for sent in SENT_SPLIT.split(text):
+        for i in range(len(sent)):
+            for n in (2, 3, 4):
+                unit = sent[i:i + n]
+                if len(unit) < n:
+                    break
+                after = sent[i + n:i + n + 1]
+                again = sent[i + n + 1:i + n + 1 + n]
+                if after == DUNHAO and again == unit:
+                    return True
+        grams = Counter(sent[i:i + 8] for i in range(max(len(sent) - 7, 1)))
+        if any(v > 1 for v in grams.values()):
+            return True
+    return False
+
+
 def clean_doc(text, stats):
     """Traditional->simplified, then drop the paragraphs worth dropping.
 
@@ -76,6 +107,9 @@ def clean_doc(text, stats):
         return None
     if ngram_repeat_ratio(text) > REPEAT_LIMIT:
         stats["repeat"] += 1
+        return None
+    if sentence_repeat(text):
+        stats["sent_repeat"] += 1
         return None
     return text
 
@@ -115,10 +149,10 @@ def build_corpus(story_chars):
             f"  uv run python -m research.zh.synth --stage write --mode story \\n"
             f"      --topics data/zh/raw/story_topics.json \\n"
             f"      --out data/zh/raw/synth_story.jsonl")
-    total = stats["leak"] + stats["latin"] + stats["repeat"]
+    total = stats["leak"] + stats["latin"] + stats["repeat"] + stats["sent_repeat"]
     print(f"dropped: {total:,} docs "
           f"(leak {stats['leak']:,}, latin-run {stats['latin']:,}, "
-          f"repeat {stats['repeat']:,})")
+          f"repeat {stats['repeat']:,}, sent-repeat {stats['sent_repeat']:,})")
     CORPUS.parent.mkdir(parents=True, exist_ok=True)
     with open(CORPUS, "w", encoding="utf-8") as f:
         f.write(f"\n{EOT}\n".join(parts))
