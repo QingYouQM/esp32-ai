@@ -292,7 +292,8 @@ class TinyLM(nn.Module):
                 "table": table, "total": total}
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40):
+    def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40,
+                 stop_token=None):
         # Appending a sample to idx requires that a sampled index IS a token
         # id. Under a distinct output alphabet it is a class, and the class to
         # token map is model data rather than architecture, so the caller owns
@@ -312,7 +313,13 @@ class TinyLM(nn.Module):
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float("inf")
             probs = F.softmax(logits, dim=-1)
-            idx = torch.cat([idx, torch.multinomial(probs, 1)], dim=1)
+            nxt = torch.multinomial(probs, 1)
+            idx = torch.cat([idx, nxt], dim=1)
+            # A model trained on documents joined by a separator token learns
+            # to emit it at the end of each one; without this check a sample
+            # runs past the boundary into an unrelated second document.
+            if stop_token is not None and nxt.item() == stop_token:
+                break
         return idx
 
 

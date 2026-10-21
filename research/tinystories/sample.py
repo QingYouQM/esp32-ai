@@ -62,12 +62,21 @@ def main():
 
     verify_tokenizer(ck, args.tokenizer)
     tok = Tokenizer.from_file(args.tokenizer)
-    ids = torch.tensor([tok.encode(args.prompt).ids], device=device)
+    # Documents are joined by the end-of-text token, so a trained model emits
+    # it to close a document; stop there instead of running into the next one.
+    stop_token = tok.token_to_id("<|endoftext|>")
+    prompt_ids = tok.encode(args.prompt).ids
+    if not prompt_ids:
+        # No prompt: condition on the separator alone, which is how the corpus
+        # opens every document after the first.
+        prompt_ids = [stop_token]
+    ids = torch.tensor([prompt_ids], device=device)
 
     b = model.param_budget()
     print(f"{Path(args.run).name}  core={b['core']:,} table={b['table']:,}\n")
     for i in range(args.samples):
-        out = model.generate(ids, args.tokens, temperature=args.temperature)
+        out = model.generate(ids, args.tokens, temperature=args.temperature,
+                             stop_token=stop_token)
         print(f"--- sample {i + 1} ---")
         print(tok.decode(out[0].tolist()).strip(), "\n")
 
