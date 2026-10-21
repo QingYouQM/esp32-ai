@@ -36,7 +36,10 @@
 #endif
 
 static const int PROMPT_IDS[] = {433, 447, 259, 405}; // "Once upon a time"
-static const int N_GENERATE = 200;
+// Backstop only: the model closes its own story with the end-of-text token
+// (id 0) and the loop below stops there, which lands near 120 tokens for a
+// 150-200 character Chinese story.
+static const int N_GENERATE = 130;
 
 Model model;
 Scratch s;
@@ -270,6 +273,7 @@ void setup() {
     int best = 0; float bv = -1e30f;
     for (int v = 0; v < model.out_vocab; v++)
       if (s.logits[v] > bv) { bv = s.logits[v]; best = v; }
+    if (best == 0) break;  // end-of-text token: the model closed the story
     tok = best;
     emit(tok);
     blink((step & 1) ? 40 : 8);
