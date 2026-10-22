@@ -92,8 +92,23 @@ function Get-LastParagraph([string]$p) {
 $logTarget = 0
 $tl = Get-LogTail "synth_*full*.log" 1
 if ($tl -and $tl -match '(\d+)/(\d+)') { $logTarget = [int]$Matches[2] }
+# But a resumed run's "N/M" counts only this invocation's todo: the paragraphs
+# already in the file appear in neither N nor M. The writer prints
+# "resuming: K paragraphs already written" once at startup, so the full job
+# is K + M (the q35 re-distillation restarted at K=10113 of 44096). Scan the
+# whole log, not the tail: the startup line scrolls out of a 3-line window
+# within minutes and out of any fixed window within the hour.
+$resumed = 0
+$logFile = Get-ChildItem $env:TEMP -Filter "synth_*full*.log" -ErrorAction SilentlyContinue |
+           Where-Object { $_.LastWriteTime -gt (Get-Date).AddHours(-6) } |
+           Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($logFile) {
+    foreach ($l in (Read-LinesShared $logFile.FullName)) {
+        if ($l -match 'resuming: (\d+)') { $resumed = [int]$Matches[1]; break }
+    }
+}
 $eff = if ($Target -gt 0) { $Target }
-       elseif ($logTarget -gt 0) { $logTarget }
+       elseif ($logTarget -gt 0) { $logTarget + $resumed }
        elseif (Test-Path $q35) { 44096 } else { 20000 }
 
 $startCount = Count-Lines $synth
