@@ -4,6 +4,10 @@ Watch the Chinese corpus pipeline without asking anyone.
     pwsh scripts/zh_status.ps1                  # refresh every 5s
     pwsh scripts/zh_status.ps1 -Interval 10     # slower
     pwsh scripts/zh_status.ps1 -Target 40000    # different goal
+
+Target is inferred when not given: the writer's own "N/M" log line first,
+then 44096 for the Qwen3.5-2B re-distillation run (synth_story_q35.jsonl),
+then 20000 for the legacy explanatory run.
     pwsh scripts/zh_status.ps1 -Once            # print once and exit
 
 Ctrl-C to stop. Nothing here touches the running job: it only reads files and
@@ -12,13 +16,14 @@ asks nvidia-smi what the card is doing.
 
 param(
     [int]$Interval = 5,
-    [int]$Target = 20000,
+    [int]$Target = 0,
     [switch]$Once
 )
 
 $root  = Split-Path -Parent $PSScriptRoot
 $synth = Join-Path $root "data/zh/raw/synth.jsonl"
 $story = Join-Path $root "data/zh/raw/synth_story.jsonl"
+$q35   = Join-Path $root "data/zh/raw/synth_story_q35.jsonl"
 $topics = Join-Path $root "data/zh/raw/topics.jsonl"
 $trainBin = Join-Path $root "data/zh/train.bin"
 $corpus = Join-Path $root "data/zh/raw/corpus.txt"
@@ -57,7 +62,10 @@ function Get-Gpu {
 }
 
 function Get-LogTail([string]$pattern, [int]$n = 3) {
+    # Only logs touched recently: a stale run's log shows "done:" and reads
+    # like the current job finished when it belongs to a run from days ago.
     $f = Get-ChildItem $env:TEMP -Filter $pattern -ErrorAction SilentlyContinue |
+         Where-Object { $_.LastWriteTime -gt (Get-Date).AddHours(-6) } |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $f) { return @() }
     $lines = Read-LinesShared $f.FullName
@@ -85,7 +93,8 @@ $logTarget = 0
 $tl = Get-LogTail "synth_*full*.log" 1
 if ($tl -and $tl -match '(\d+)/(\d+)') { $logTarget = [int]$Matches[2] }
 $eff = if ($Target -gt 0) { $Target }
-       elseif ($logTarget -gt 0) { $logTarget } else { 20000 }
+       elseif ($logTarget -gt 0) { $logTarget }
+       elseif (Test-Path $q35) { 44096 } else { 20000 }
 
 $startCount = Count-Lines $synth
 $startTime  = Get-Date
@@ -98,7 +107,7 @@ while ($true) {
     $now    = Get-Date
     # Whichever corpus file exists later in the pipeline is the active job;
     # right now that is the story run, earlier it was the explanatory one.
-    $active = if (Test-Path $story) { $story } else { $synth }
+    $active = if (Test-Path $q35) { $q35 } elseif (Test-Path $story) { $story } else { $synth }
     $count  = Count-Lines $active
     $dt     = ($now - $prevTime).TotalSeconds
     $speed  = if ($dt -gt 0.5) { ($count - $prevCount) / $dt } else { 0 }
@@ -135,6 +144,9 @@ while ($true) {
     Write-Host ("        主题池   {0} 条" -f (Count-Lines $topics))
     Write-Host ("        说明文   {0} 段  ({1})" -f (Count-Lines $synth), (Get-Size $synth))
     Write-Host ("        故事     {0} 段  ({1})" -f (Count-Lines $story), (Get-Size $story))
+    if (Test-Path $q35) {
+        Write-Host ("        Qwen3.5  {0} 段  ({1})" -f (Count-Lines $q35), (Get-Size $q35))
+    }
     Write-Host ("        语料     {0}" -f (Get-Size $corpus))
     Write-Host ("        train.bin {0}" -f (Get-Size $trainBin))
 
