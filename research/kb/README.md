@@ -55,8 +55,26 @@ Entailment. evidence is verified to *appear* in the quote, not to *support* the
 claim. That is the reviewer's job, and the reason `review.status` exists: an
 entry is `draft` until somebody reads it against the source.
 
+## Packing
+
+```bash
+uv run python -m research.kb.pack research/kb/entries --verify
+```
+
+`--verify` parses the blob back and compares every id, title and material
+byte against the source, so a layout bug surfaces here rather than on the
+board. Refuses to pack anything that fails validation.
+
+    header  12 B   4s "KBRD", u16 version, u16 count, u16 stride, u16 reserved
+    index   N x 12  u32 off, u16 id_len, u16 title_len, u16 mat_len, u16 flags
+    blob    ...    id, title, material, concatenated, UTF-8, no terminators
+
+flags bit 0 marks an entry with at least one inferred field. The device reads
+record `i`, bounds-checks it, and copies the material into the prompt; it never
+parses a field or a delimiter. 24 entries come to 9.3 KiB, so a 2,600-entry set
+is about 1 MiB - the resource set is not what fills the flash.
+
 ## Not built yet
 
-- `pack.py`: entries -> `kb.bin` (fixed-stride index + UTF-8 blob) for the device
 - batch statistics from the spec's M7/M9: near-duplicate detection across
   entries and phrase-coverage reporting

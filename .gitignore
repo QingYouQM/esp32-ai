@@ -24,3 +24,6 @@ videos/
 *.mov
 *.MOV
 *.MP4
+
+# generated kb blob
+research/kb/build/

@@ -156,7 +156,7 @@ def check(entry, verbose=False):
         for word in NARRATION_WEAK:
             if word in text:
                 add("warn", "H2-NARRATION", f"{name} contains {word!r}")
-        if name != "时间" and DIGIT_RE.search(text):
+        if verbose and name != "时间" and DIGIT_RE.search(text):
             add("warn", "M4-DIGITS", f"{name} uses Arabic digits")
 
     if total > MATERIAL_MAX:

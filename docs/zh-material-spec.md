@@ -169,11 +169,13 @@ M3 是整个设计的支点：它把"写错主人公"从概率问题变成一个
 设备端二进制布局：
 
 ```
-[index]  N × { u16 id, u16 title_off, u16 mat_off, u16 mat_len }   # 定长
-[blob]   标题 + 材料正文，UTF-8
+header  12 B   4s "KBRD"，u16 版本，u16 条目数，u16 步长，u16 保留
+index   N × 12  u32 off，u16 id_len，u16 title_len，u16 mat_len，u16 flags
+blob    ...     id、标题、材料正文依次拼接，UTF-8，无终止符
 ```
 
-固件按键选题后按偏移直取材料、拼进 prompt，不做任何解析。
+固件按键选题后按偏移直取材料、拼进 prompt，不做任何解析。`flags` 第 0 位置 1 表示该条目
+至少有一个字段是推定的，供复核时筛选。
 
 ---
 
