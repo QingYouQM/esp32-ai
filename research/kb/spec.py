@@ -26,9 +26,10 @@ MATERIAL_MARK = "<|material|>"
 STORY_MARK = "<|story|>"
 EOD_MARK = "<|endoftext|>"
 
-# Surnames and compound surnames. The checker only uses these to find proper
-# nouns the material never introduced; a miss costs a false negative, an
-# over-wide list costs false positives, so this is the common set, not all 400.
+# Surnames and compound surnames. The checker uses these to find proper nouns
+# a material never introduced. Only personal names are listed in 人物 when the
+# source has them; a role label ("图书管理员") is matched by substring instead,
+# which is why this list is for the reverse check alone.
 SURNAMES = (
     "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜"
     "谢邹喻柏窦章苏潘葛范彭鲁韦马苗方俞任袁柳唐薛雷贺倪汤罗毕郝安常"

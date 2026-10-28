@@ -68,9 +68,11 @@ def listed_people(text):
     names = []
     for chunk in re.split(r"[；;]", text):
         head = re.split(r"[、，,]", chunk)[0].strip()
-        m = NAME_RE.match(head)
-        if m:
-            names.append(clean_name(m))
+        # A label, not necessarily a personal name: the training corpus is full
+        # of "图书管理员" and "老爷爷", and a card that renames them invents a
+        # person the story never had.
+        if 1 < len(head) <= 8:
+            names.append(head)
     return names
 
 

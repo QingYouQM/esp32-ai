@@ -194,12 +194,13 @@ OPTIONAL_PARAMS = ("thinking", "reasoning_effort")
 
 
 def call_api(prompt, model, base_url, key, temperature, timeout,
-             max_tokens=3000, thinking=False, reasoning_effort="low"):
+             max_tokens=3000, thinking=False, reasoning_effort="low",
+             system=SYSTEM):
     url = base_url.rstrip("/") + "/chat/completions"
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
         "temperature": temperature,
