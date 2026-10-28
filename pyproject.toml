@@ -10,9 +10,27 @@ dependencies = [
     "numpy>=2.5.1",
     "requests>=2.34.2",
     "tokenizers>=0.23.1",
-    "torch>=2.13.0",
+    "torch>=2.11.0",
     "tqdm>=4.69.0",
 ]
+
+# Torch has to come from the CUDA index, pinned here rather than installed by
+# hand. PyPI's Windows torch is the CPU build, and `uv run` re-syncs on every
+# invocation: a manually installed CUDA wheel gets silently replaced, after
+# which torch.cuda reports "not compiled with CUDA enabled" while the install
+# log still claims a successful upgrade. `torch-backend` does not fix this -
+# it only seeds defaults when creating a project, and did not redirect
+# resolution here in testing. An explicit source does.
+#
+# The floor is 2.11 because the CUDA index tops out below PyPI's current
+# torch; demanding 2.13 makes the two unsatisfiable.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
 
 # scripts/benchmark_device.py talks to the board over USB serial. Only needed to
 # benchmark hardware: uv sync --extra device
