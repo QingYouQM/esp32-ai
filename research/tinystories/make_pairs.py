@@ -227,13 +227,15 @@ def main():
                     api_fail += 1
                 # Written as they happen, so a throttled run can be diagnosed
                 # while it is still running instead of after it finishes.
-                with log.open("a", encoding="utf-8") as f:
+                with log.open("a", encoding="utf-8", newline="\n") as f:
                     f.write(f"{i}\t{kind}\t{why[:90]}\t{story[:40]}\n")
                 continue
             entry = {"fields": {k: {"text": str(fields[k]).strip()} for k in FIELDS}}
             doc = (f"{MATERIAL_MARK}\n{material_text(entry)}\n{STORY_MARK}\n"
                    f"{story}\n{EOD_MARK}\n")
-            with out_path.open("a", encoding="utf-8") as f:
+            # newline="\n" so a Windows run does not quietly turn the corpus
+            # into CRLF: the tokenizer would see a 0x0D before every marker.
+            with out_path.open("a", encoding="utf-8", newline="\n") as f:
                 f.write(doc)
             kept += 1
             if i % 20 == 0:
