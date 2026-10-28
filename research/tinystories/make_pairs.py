@@ -76,6 +76,21 @@ def extract_json(raw):
     return json.loads(text[start:end + 1])
 
 
+def appears_in(label, story):
+    """Whether a label the card uses is in the story, allowing paraphrase.
+
+    The model writes 面包店老板 where the story says 面包店的老板, so an exact
+    substring test rejects a correct card. Dropping 的 and accepting a prefix of
+    at least two characters covers that without accepting a name the story
+    never had.
+    """
+    s = story.replace("的", "")
+    label = label.replace("的", "")
+    if label in s:
+        return True
+    return any(label[:n] in s for n in range(len(label) - 1, 1, -1))
+
+
 def check_material(fields, story):
     """Return (ok, reason). The material must describe this story and no other."""
     problems = []
@@ -107,7 +122,7 @@ def check_material(fields, story):
     if not declared:
         return False, "no person named"
     for person in declared:
-        if person not in story:
+        if not appears_in(person, story):
             return False, f"invented {person}"
 
     # The reverse direction - a name that acts but is never declared - is not
@@ -179,8 +194,9 @@ def main():
     if not api_key:
         raise SystemExit(f"no API key in {args.key_file}, $OPENAI_API_KEY or --api-key")
 
-    kept, rejects = 0, []
+    kept, rejects, api_fail = 0, [], 0
     t0 = time.time()
+    log = out_path.with_suffix(".rejects.txt")
 
     def one(story):
         prompt = "故事：\n" + story + "\n\n请输出材料卡 JSON。"
@@ -189,24 +205,30 @@ def main():
                             max_tokens=args.max_tokens, thinking=False,
                             reasoning_effort="low", system=SYSTEM)
         if err:
-            return story, None, err
+            return story, None, err, "api"
         try:
             fields = extract_json(raw)
         except (ValueError, json.JSONDecodeError) as e:
-            return story, None, f"json: {e}"
+            return story, None, f"json: {e}", "json"
         if not isinstance(fields, dict):
-            return story, None, "not an object"
+            return story, None, "not an object", "json"
         ok, why = check_material(fields, story)
         if not ok:
-            return story, None, why
-        return story, fields, ""
+            return story, None, why, "check"
+        return story, fields, "", ""
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [pool.submit(one, s) for s in todo]
         for i, fut in enumerate(as_completed(futures), 1):
-            story, fields, why = fut.result()
+            story, fields, why, kind = fut.result()
             if why:
                 rejects.append((i, why, story[:50]))
+                if kind == "api":
+                    api_fail += 1
+                # Written as they happen, so a throttled run can be diagnosed
+                # while it is still running instead of after it finishes.
+                with log.open("a", encoding="utf-8") as f:
+                    f.write(f"{i}\t{kind}\t{why[:90]}\t{story[:40]}\n")
                 continue
             entry = {"fields": {k: {"text": str(fields[k]).strip()} for k in FIELDS}}
             doc = (f"{MATERIAL_MARK}\n{material_text(entry)}\n{STORY_MARK}\n"
@@ -218,13 +240,9 @@ def main():
                 rate = i / max(time.time() - t0, 1e-6)
                 left = (len(todo) - i) / max(rate, 1e-9) / 60
                 print(f"  {i}/{len(todo)} kept {kept} rejected {len(rejects)} "
-                      f"{rate:.2f}/s eta {left:.1f}min", flush=True)
+                      f"(api {api_fail}) {rate:.2f}/s eta {left:.1f}min", flush=True)
 
     if rejects:
-        log = out_path.with_suffix(".rejects.txt")
-        with log.open("a", encoding="utf-8") as f:
-            for i, why, head in rejects:
-                f.write(f"{i}\t{why}\t{head}\n")
         kinds = Counter(w.split(" ", 1)[0] for _, w, _ in rejects)
         print("reject reasons: " + ", ".join(f"{k}={v}" for k, v in kinds.most_common()))
         print(f"reject log: {log}")
