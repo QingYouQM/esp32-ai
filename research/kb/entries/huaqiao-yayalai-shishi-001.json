@@ -1,0 +1,51 @@
+{
+  "id": "huaqiao-yayalai-shishi-001",
+  "title": "叶亚来病逝",
+  "source": {
+    "work": "人民日报海外版《华裔叶亚来重建吉隆坡》（中国侨网转载）",
+    "url": "https://www.chinaqw.com/zgqj/qsgc/200701/26/59284.shtml",
+    "revision": "2007-01-26",
+    "quotes": [
+      "1870年，33岁的叶亚来出任吉隆坡第三任甲必丹。",
+      "1885年4月15日，叶亚来因劳累过度英年早逝，时年仅48岁。出殡那天，市政府停止办公一天，各级官员和市民排队为其送行。"
+    ]
+  },
+  "fields": {
+    "人物": {
+      "text": "叶亚来，吉隆坡华人甲必丹。",
+      "evidence": "叶亚来出任吉隆坡第三任甲必丹",
+      "inferred": false
+    },
+    "时间": {
+      "text": "1885年4月15日。",
+      "evidence": "1885年4月15日，叶亚来因劳累过度英年早逝",
+      "inferred": false
+    },
+    "地点": {
+      "text": "吉隆坡。",
+      "evidence": null,
+      "inferred": true
+    },
+    "起因": {
+      "text": "叶亚来因劳累过度病倒。",
+      "evidence": "叶亚来因劳累过度英年早逝",
+      "inferred": false
+    },
+    "经过": {
+      "text": "1885年4月15日病逝，年四十八岁。",
+      "evidence": "1885年4月15日，叶亚来因劳累过度英年早逝，时年仅48岁",
+      "inferred": false
+    },
+    "结果": {
+      "text": "出殡那天，市政府停止办公一天，官员和市民排队送行。",
+      "evidence": "出殡那天，市政府停止办公一天，各级官员和市民排队为其送行",
+      "inferred": false
+    }
+  },
+  "notes": "",
+  "review": {
+    "status": "draft",
+    "by": null,
+    "at": null
+  }
+}

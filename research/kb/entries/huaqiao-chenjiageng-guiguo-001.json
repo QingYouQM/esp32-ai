@@ -1,0 +1,50 @@
+{
+  "id": "huaqiao-chenjiageng-guiguo-001",
+  "title": "回国定居集美",
+  "source": {
+    "work": "中国侨网《开国大典背后的侨心侨力》",
+    "url": "https://www.chinaqw.com/qbapp/zwShare.html?id=894-5-232893&type=zw",
+    "revision": null,
+    "quotes": [
+      "1950年，陈嘉庚回国定居故乡集美村，定居集美的12年是他一生最愉快的时期。他先后亲自主持集美、厦大两校校舍的修建"
+    ]
+  },
+  "fields": {
+    "人物": {
+      "text": "陈嘉庚，南洋华侨。",
+      "evidence": "1950年，陈嘉庚回国定居故乡集美村",
+      "inferred": false
+    },
+    "时间": {
+      "text": "1950年。",
+      "evidence": "1950年，陈嘉庚回国定居故乡集美村",
+      "inferred": false
+    },
+    "地点": {
+      "text": "福建集美村。",
+      "evidence": "回国定居故乡集美村",
+      "inferred": false
+    },
+    "起因": {
+      "text": "新中国成立后，陈嘉庚结束在南洋的事务，回国定居。",
+      "evidence": null,
+      "inferred": true
+    },
+    "经过": {
+      "text": "1950年，他回到故乡集美村定居。",
+      "evidence": "1950年，陈嘉庚回国定居故乡集美村",
+      "inferred": false
+    },
+    "结果": {
+      "text": "此后他亲自主持集美和厦门大学两校校舍的修建。",
+      "evidence": "他先后亲自主持集美、厦大两校校舍的修建",
+      "inferred": false
+    }
+  },
+  "notes": "",
+  "review": {
+    "status": "draft",
+    "by": null,
+    "at": null
+  }
+}
