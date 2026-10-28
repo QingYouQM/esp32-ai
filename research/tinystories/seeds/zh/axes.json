@@ -1,0 +1,44 @@
+{
+  "_comment": "Difference axes for corpus expansion. The prompt locks the recipe (reading level, sentence length, single turn, structure) and varies only these four. Free-hand generation repeats itself within a hundred documents; forcing the axes apart is what stopped the collapse between batch 1 and batch 2. Batch 1 was almost entirely 'small animal, forest, danger, warm ending' - the axes below exist so that combination cannot dominate. Combinations are assigned deterministically by index rather than sampled, so every value on every axis gets covered evenly instead of by luck.",
+
+  "protagonists": [
+    "小刺猬", "小兔子", "小鸟", "蚂蚁", "蜻蜓", "金鱼", "小乌龟",
+    "小狗", "小猫", "小男孩", "小女孩", "老爷爷", "老奶奶", "面包店老板",
+    "邮差", "木匠", "卖糖人的", "渔夫", "老师", "医生", "消防员",
+    "清洁工", "图书管理员", "修鞋匠", "养鸽人", "花匠", "卖菜的", "司机",
+    "中学生的姐姐", "看门人", "裁缝"
+  ],
+
+  "settings": [
+    "一片小树林里", "小镇的街道上", "学校教室里", "自家院子里", "小河边",
+    "早市上", "村口的老坡上", "火车站候车室", "图书馆里", "面包店后厨",
+    "公园的长椅旁", "一栋旧楼的屋顶上", "地窖里", "石桥上面", "稻田中间",
+    "小工厂车间里", "海边", "湖边", "树林深处", "窄巷子里",
+    "医院走廊", "操场边", "后山的洞口", "桥洞下面", "集市上",
+    "果园里", "池塘边", "楼梯间", "售票亭旁", "干掉的河道上"
+  ],
+
+  "turns": [
+    "忽然好奇起来", "迷了路", "不小心犯了错", "开始等一件不会来的事",
+    "第一次尝试失败", "被人误会了", "犹豫了很久", "迟到了",
+    "忘了带要带的东西", "遇到一个陌生人", "东西坏了", "天气突然变了",
+    "主动去帮别人", "拒绝了别人的请求", "两个东西被争抢", "学会了分享",
+    "开口道歉", "坚持原来的做法", "决定放弃", "换了个方法",
+    "偷偷地做", "被人发现了", "把东西送人", "婉拒了礼物",
+    "在找丢失的东西", "发现东西丢了", "学一样新本领", "模仿别人",
+    "自己拿主意", "替别人顶了事", "记错了事情", "被要求表演",
+    "第一次赢", "第一次输"
+  ],
+
+  "endings": [
+    "温暖的", "平静的", "有点好笑的", "淡淡的惆怅的", "没有结论的",
+    "出乎意料的", "带一点甜的", "有点尴尬的", "突然就停住的",
+    "慢了半拍才反应过来的", "什么也没解决的", "让人想笑又想叹气的"
+  ],
+
+  "_few_shot": {
+    "_comment": "Seeds for the style anchor, copied verbatim from corpus.txt. Aiming a model at a description of the register produces a nearby register; aiming it at actual documents produces that register. Rotating which two appear per request stops the model from learning a fixed template of two.",
+    "from": "research/tinystories/seeds/zh/corpus.txt",
+    "count": 4
+  }
+}
