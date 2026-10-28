@@ -91,6 +91,14 @@ def main():
                     help="pin ffn_hidden and skip the core solver (table-scaling sweep)")
     # Published experiments always pass --vocab; the default is for ad-hoc runs.
     ap.add_argument("--vocab", type=int, default=32768)
+    ap.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="directory holding train.bin/val.bin/tokenizer.json. Defaults to "
+             "data/tinystories/vocab-<vocab>, which is where the published arms "
+             "live; a corpus prepared with --tag lands elsewhere and needs this.",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
@@ -103,7 +111,7 @@ def main():
         raise SystemExit(f"--vocab must be 1..65536; the token bins are uint16 "
                          f"and are memmapped as uint16")
 
-    dataset = variant_dir(args.vocab)
+    dataset = args.data_dir or variant_dir(args.vocab)
     tok_path = dataset / "tokenizer.json"
     if not os.path.exists(tok_path):
         raise SystemExit(
