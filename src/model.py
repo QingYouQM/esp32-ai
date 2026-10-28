@@ -51,6 +51,11 @@ class Config:
     seq_len: int = 512
     ple_dim: int = 64
     rope_theta: float = 10000.0
+    # Dropout on each sublayer's output, before its residual add. Functional
+    # rather than an nn.Dropout module so the module tree and state_dict stay
+    # identical: existing checkpoints load unchanged, and the exporter never
+    # meets a module it does not know. At 0.0 it is a no-op in both modes.
+    dropout: float = 0.0
 
     @property
     def head_dim(self):
@@ -165,8 +170,9 @@ class Block(nn.Module):
             self.ple_norm = RMSNorm(cfg.d_model)
 
     def forward(self, x, cos, sin, ple=None):
-        x = x + self.attn(self.attn_norm(x), cos, sin)
-        x = x + self.ffn(self.ffn_norm(x))
+        p = self.cfg.dropout
+        x = x + F.dropout(self.attn(self.attn_norm(x), cos, sin), p, self.training)
+        x = x + F.dropout(self.ffn(self.ffn_norm(x)), p, self.training)
         if ple is not None:
             g = F.gelu(self.ple_gate(x))
             x = x + self.ple_norm(self.ple_proj(g * ple))

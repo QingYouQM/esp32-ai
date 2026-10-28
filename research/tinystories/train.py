@@ -89,6 +89,9 @@ def main():
     ap.add_argument("--n-heads", type=int, default=4)
     ap.add_argument("--fixed-ffn", type=int, default=None,
                     help="pin ffn_hidden and skip the core solver (table-scaling sweep)")
+    ap.add_argument("--dropout", type=float, default=0.0,
+                    help="dropout on each sublayer output before its residual add; "
+                         "0.0 is the historical no-op")
     # Published experiments always pass --vocab; the default is for ad-hoc runs.
     ap.add_argument("--vocab", type=int, default=32768)
     ap.add_argument(
@@ -125,7 +128,8 @@ def main():
     os.makedirs(RUNS, exist_ok=True)
 
     base = Config(seq_len=args.seq_len, ple_dim=args.ple_dim, vocab_size=args.vocab,
-                  d_model=args.d_model, n_layers=args.n_layers, n_heads=args.n_heads)
+                  d_model=args.d_model, n_layers=args.n_layers, n_heads=args.n_heads,
+                  dropout=args.dropout)
     model = make_model(args.arm, args.target_core, base, fixed_ffn=args.fixed_ffn).to(device)
     budget = model.param_budget()
     cfg = model.cfg
