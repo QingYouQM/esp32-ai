@@ -36,6 +36,10 @@ SOURCE_URL = TINYSTORIES_URL
 CORPUS = None
 DOC_SEP = "<|endoftext|>"
 SLICE_BYTES = 300 * 1024 * 1024   # ~300MB of English stories is ~75M tokens
+# Structural markers that must survive as one token each. A paired corpus puts
+# <|material|> and <|story|> inside every document, and ByteLevel would shred
+# them into six or eight merges that no longer line up with anything.
+MARKERS = []
 VAL_FRACTION = 0.005
 VOCAB_SIZE = 32768   # what ships; every other size has to be asked for
 
@@ -122,7 +126,7 @@ def train_tokenizer(text):
     tok.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
         vocab_size=VOCAB_SIZE,
-        special_tokens=[DOC_SEP],
+        special_tokens=[DOC_SEP] + MARKERS,
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=True,
     )
@@ -134,7 +138,7 @@ def train_tokenizer(text):
 
 
 def main():
-    global VOCAB_SIZE, TAG, SOURCE_URL, CORPUS, DOC_SEP, SLICE_BYTES
+    global VOCAB_SIZE, TAG, SOURCE_URL, CORPUS, DOC_SEP, SLICE_BYTES, MARKERS
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--vocab", type=int, default=VOCAB_SIZE)
@@ -149,6 +153,15 @@ def main():
                     help="remote corpus to slice when --corpus is absent")
     ap.add_argument("--doc-sep", default=DOC_SEP,
                     help="document separator; becomes a special token")
+    ap.add_argument("--val-fraction", type=float, default=VAL_FRACTION,
+                    help="share of tokens held out, taken on document "
+                         "boundaries. 0.005 is right for the 75M-token English "
+                         "slice; a 1M-token corpus needs 0.02 to give the "
+                         "evaluation more than a dozen windows")
+    ap.add_argument("--markers", default="",
+                    help="comma-separated structural markers to register as "
+                         "single tokens, e.g. '<|material|>,<|story|>'; the "
+                         "separator is registered automatically")
     ap.add_argument("--slice-bytes", type=int, default=SLICE_BYTES,
                     help="byte-exact prefix to fetch when --corpus is absent")
     args = ap.parse_args()
@@ -162,6 +175,9 @@ def main():
     CORPUS = args.corpus
     DOC_SEP = args.doc_sep
     SLICE_BYTES = args.slice_bytes
+    MARKERS = [m.strip() for m in args.markers.split(",") if m.strip()]
+    if DOC_SEP in MARKERS:
+        raise SystemExit("--markers should not repeat --doc-sep")
 
     if not DOC_SEP:
         raise SystemExit("--doc-sep must be non-empty: it is both the document "
@@ -183,9 +199,24 @@ def main():
                          f"boundary has to be marked for the split to work")
     text = text[: cut + len(DOC_SEP)]
 
+    for marker in MARKERS:
+        if marker not in text:
+            raise SystemExit(f"corpus never contains the marker {marker!r}")
+
     tok = train_tokenizer(text)
     eot = tok.token_to_id(DOC_SEP)
     print(f"doc-sep id = {eot}")
+    for marker in MARKERS:
+        mid = tok.token_to_id(marker)
+        if mid is None:
+            raise SystemExit(f"{marker!r} did not become a special token")
+        # One token, not a merge chain: that is the whole point of registering
+        # it, and a silent split here would only show up as a model that learns
+        # to spell '<|mat'.
+        nl = len(tok.encode(marker, add_special_tokens=False).ids)
+        if nl != 1:
+            raise SystemExit(f"{marker!r} encodes to {nl} tokens, not 1")
+        print(f"marker {marker} id = {mid}")
 
     print("encoding...")
     docs = text.split(DOC_SEP)
@@ -211,7 +242,7 @@ def main():
     # small one hits them on the first run.
     min_window = args.seq_len + 1
     total = sum(len(e) + 1 for e in enc_docs)
-    need = max(int(total * VAL_FRACTION), min_window)
+    need = max(int(total * args.val_fraction), min_window)
 
     n_val_docs, val_len = 0, 0
     while n_val_docs < len(enc_docs) - 1:      # always leave >= 1 for training
