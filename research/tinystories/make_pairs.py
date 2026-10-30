@@ -133,6 +133,23 @@ def check_material(fields, story):
 
     if len(story) < 120:
         return False, "story short"
+    # The story half was never checked, only the card, so a model that slipped
+    # Latin or a lost character into the prose wrote it straight into the corpus.
+    if LATIN.search(story):
+        return False, "latin in story"
+    if "�" in story or any("�" in str(fields[k]) for k in FIELDS):
+        return False, "lost character"
+    for label, text in (("material", " ".join(str(fields[k]) for k in FIELDS)),
+                        ("story", story)):
+        if text.count("“") != text.count("”"):
+            return False, f"unbalanced quotes in {label}"
+    # A story that repeats its own card is transcription, not writing, and it
+    # teaches the model to paraphrase instead of to invent around the facts.
+    joined = " ".join(str(fields[k]) for k in FIELDS)
+    mat6 = {joined[i:i + 6] for i in range(len(joined) - 5)}
+    st6 = {story[i:i + 6] for i in range(len(story) - 5)}
+    if st6 and len(mat6 & st6) / len(st6) > 0.5:
+        return False, "story copies material"
     return True, ""
 
 
