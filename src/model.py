@@ -298,7 +298,8 @@ class TinyLM(nn.Module):
                 "table": table, "total": total}
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40):
+    def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40,
+                 repetition_penalty=1.0, no_repeat_ngram=0):
         # Appending a sample to idx requires that a sampled index IS a token
         # id. Under a distinct output alphabet it is a class, and the class to
         # token map is model data rather than architecture, so the caller owns
@@ -313,7 +314,26 @@ class TinyLM(nn.Module):
         for _ in range(max_new_tokens):
             idx_c = idx[:, -self.cfg.seq_len :]
             logits, _ = self(idx_c)
-            logits = logits[:, -1, :] / temperature
+            logits = logits[:, -1, :].float() / max(temperature, 1e-6)
+            if repetition_penalty != 1.0:
+                window = idx[:, -256:]
+                for b in range(idx.size(0)):
+                    seen = torch.unique(window[b])
+                    vals = logits[b, seen]
+                    logits[b, seen] = torch.where(vals > 0, vals / repetition_penalty,
+                                                  vals * repetition_penalty)
+            if no_repeat_ngram > 0 and idx.size(1) >= no_repeat_ngram:
+                # Cheap and decisive: a 4-gram that already appeared cannot be
+                # completed again. Small models fall into loops ("学小鸟的样子"
+                # nine times) and no amount of temperature tuning fixes it.
+                for b in range(idx.size(0)):
+                    seq = idx[b].tolist()
+                    prefix = tuple(seq[-(no_repeat_ngram - 1):])
+                    banned = {seq[i + no_repeat_ngram - 1]
+                              for i in range(len(seq) - no_repeat_ngram + 1)
+                              if tuple(seq[i:i + no_repeat_ngram - 1]) == prefix}
+                    if 0 < len(banned) < logits.size(-1):
+                        logits[b, list(banned)] = -float("inf")
             if top_k:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float("inf")
