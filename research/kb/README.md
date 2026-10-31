@@ -7,11 +7,12 @@ The format is fixed by [docs/zh-material-spec.md](../../docs/zh-material-spec.md
 The training corpus and this set have to be byte-identical, because the model
 learns one shape and is deployed on that same shape.
 
-The card is a **seed for a story, not a source of facts**: measured on 24 real
-cards the model reproduces neither the names nor the events, at 3M or at 10M.
-The shipped contract (what a story must and must not do) is
-[docs/zh-story-prompt.md](../../docs/zh-story-prompt.md); the release gate there
-is `accept.py`, not entity coverage.
+The card is the **factual boundary for a historical story**. The delivery contract
+is [docs/zh-story-prompt.md](../../docs/zh-story-prompt.md): every story must be
+150–200 characters and retain the card's declared facts. Each entry carries
+material-supported `acceptance.required_spans`; `accept.py` checks them together
+with people, numbers, length and stopping. Automatic checks still require human
+historical review and an approved source before release.
 
 ```
 schema.json          what an entry may contain
@@ -43,6 +44,7 @@ an error - it shows up as a prompt that reads wrong and seeds a worse story.
 | E4-EVIDENCE | a field claims content its quote does not contain |
 | E5-REVIEW | unknown review status |
 | E6-DUPLICATE | the same id used twice |
+| A1-FACTS | empty acceptance anchors, or an anchor not present in the material |
 | M2-LENGTH | field or material over budget |
 | M3-ENTITY | a declared person who never acts |
 | M4-DIGITS | Arabic digits outside 时间 (warning) |

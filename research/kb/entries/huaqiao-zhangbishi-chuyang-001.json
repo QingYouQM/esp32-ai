@@ -52,5 +52,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1856年",
+      "巴达维亚",
+      "纸行当学徒",
+      "独立经营酒类商行",
+      "承包酒税"
+    ]
   }
 }

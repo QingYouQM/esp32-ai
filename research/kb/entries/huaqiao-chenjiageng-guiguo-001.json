@@ -46,5 +46,13 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1950年",
+      "福建集美村",
+      "回到故乡集美村定居",
+      "主持集美和厦门大学两校校舍的修建"
+    ]
   }
 }

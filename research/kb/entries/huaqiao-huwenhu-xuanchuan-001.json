@@ -51,5 +51,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "抗战爆发后",
+      "四川",
+      "五个永安堂抗日宣传队",
+      "四川一百个县乡",
+      "取代了日本仁丹"
+    ]
   }
 }

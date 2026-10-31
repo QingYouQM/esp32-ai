@@ -1,13 +1,13 @@
-"""Diagnostic: measure whether a checkpoint uses the material it is given.
+"""Diagnostic: measure surface overlap between a story and its material.
 
-This is not the release gate any more -- see docs/zh-story-prompt.md and
-research/kb/accept.py. It stays because "0% entity, 0% event" is the evidence
-behind that decision, and because a future copy mechanism has to beat these
-numbers. Entity/event are, by measurement, always ~0%; do not gate on them.
+This is not the release gate: entity and character-bigram overlap cannot prove
+that an event is stated correctly. The historical gate is research/kb/accept.py,
+which checks explicit material-supported fact anchors plus human review. This
+tool remains useful for comparing future copy mechanisms with the old ~0%
+baseline, and --force-names isolates copying from prose quality.
 
-Loss on a held-out split says nothing about the only thing that matters here:
-does the story contain the people and events of the card in front of it. Two
-numbers, both cheap and both brutal:
+Loss on a held-out split says nothing about whether the story contains the
+people and events of the card in front of it. Two cheap diagnostic numbers:
 
   entity  share of the names declared in 人物 that appear in the story
   event   share of the character bigrams in 经过 and 结果 that appear in it
@@ -37,7 +37,7 @@ from tokenizers import Tokenizer
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from model import Config, TinyLM  # noqa: E402
 
-from research.kb.constrain import ForcedNames, boundary_ids  # noqa: E402
+from research.kb.constrain import ForcedSpans, boundary_ids  # noqa: E402
 from research.kb.render import prompt_text  # noqa: E402
 from research.kb.validate import listed_people  # noqa: E402
 
@@ -105,7 +105,7 @@ def main():
         free = decode(ids)
         row = {"title": entry["title"], "free": score(free), "free_text": free}
         if args.force_names:
-            policy = ForcedNames([tok.encode(n).ids for n in names],
+            policy = ForcedSpans([tok.encode(n).ids for n in names],
                                  sentence_ends, args.tokens)
             forced = decode(ids, policy)
             if policy.fired < len(names):

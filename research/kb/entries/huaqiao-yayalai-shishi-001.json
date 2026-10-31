@@ -47,5 +47,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1885年4月15日",
+      "吉隆坡",
+      "年四十八岁",
+      "市政府停止办公一天",
+      "官员和市民排队送行"
+    ]
   }
 }

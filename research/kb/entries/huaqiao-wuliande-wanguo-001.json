@@ -47,5 +47,13 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1911年4月",
+      "奉天",
+      "推举为大会主席",
+      "东三省设立永久性防疫机构"
+    ]
   }
 }

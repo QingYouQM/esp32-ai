@@ -51,5 +51,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1900年",
+      "诗巫",
+      "以港主身份与布鲁克订约",
+      "选定诗巫郊外新珠山为垦区",
+      "九百九十九年"
+    ]
   }
 }

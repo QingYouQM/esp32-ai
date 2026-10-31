@@ -49,5 +49,15 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1910年12月",
+      "哈尔滨",
+      "肺鼠疫",
+      "封锁铁路",
+      "伍氏口罩",
+      "四个月内扑灭鼠疫"
+    ]
   }
 }

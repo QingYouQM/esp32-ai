@@ -52,5 +52,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1916年9月12日",
+      "巴城",
+      "享年76岁",
+      "原籍大埔安葬",
+      "下半旗致哀"
+    ]
   }
 }

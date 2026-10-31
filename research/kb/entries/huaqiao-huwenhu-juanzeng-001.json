@@ -51,5 +51,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1937年至1945年",
+      "南洋",
+      "捐助现金逾3000万元",
+      "捐资过亿",
+      "数额最多"
+    ]
   }
 }

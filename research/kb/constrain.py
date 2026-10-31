@@ -1,83 +1,70 @@
-"""Optional style switch: make the declared names appear by construction.
+"""Constrain decoding so material-supported spans land in the story.
 
-Not part of the shipped contract (docs/zh-story-prompt.md): with it on, the
-output is no longer the model's own choice, so it cannot be used to judge the
-checkpoint. Kept as a per-request option for demos where a name must appear.
+The model still writes the prose between spans. During a span slot every token
+but the next required one is masked; elsewhere the distribution is untouched.
+Slots are evenly spaced and normally open at sentence boundaries. EOD can be
+suppressed until every span is complete, preventing an early ending from
+silently starving the remaining facts.
 
-A 3M-parameter core cannot copy a string across context: measured on 24 real
-cards, the entity rate was 0% on every checkpoint, and the names it did produce
-were invented ones. That is a capability limit, so no amount of prompting fixes
-it -- the fix has to sit outside the model.
-
-This is the outside. Each declared name gets a slot: the first one opens the
-story, each later one lands at the first sentence break after its even share of
-the token budget. Inside a slot the next token is forced; everywhere else the
-distribution is untouched, so the prose between names is still the model own.
-
-The trade is explicit. Coverage becomes 100% mechanically, which means it no
-longer measures the model at all -- it measures the schedule. What it buys is a
-clean split: if the stories still read as stories, the model can use a name it
-was handed and the failure was only copying; if they fall apart around the
-inserted names, the failure is deeper than copying.
+This is a generation pipeline, not evidence that the checkpoint learned to
+copy. accept.py reports free and constrained runs separately, and every span
+is still checked in the decoded text.
 """
 
 import torch
 
-# Sentence ends. A name wants to start a sentence; starting one after a comma
-# reads like a typo, and starting one mid-clause reads like a paste job.
-BOUNDARIES = "\u3002\uff01\uff1f\u2026\uff1b\n"
+BOUNDARIES = "。！？…；\n"
 
 
 def boundary_ids(tok):
-    """Token ids that end a sentence, so the schedule can wait for one."""
+    """Token ids that end a sentence, so a slot can wait for a clean boundary."""
     return {i for i in range(tok.get_vocab_size())
             if tok.decode([i]).endswith(tuple(BOUNDARIES))}
 
 
-class ForcedNames:
-    """One story at a time, every name once, at planned positions.
+class ForcedSpans:
+    """One story at a time, every token span once, at planned positions."""
 
-    Callable as the logits_processor of TinyLM.generate: it masks all but the
-    forced token while a slot is open, and returns the logits untouched
-    otherwise.
-    """
-
-    def __init__(self, names, boundary, budget):
-        if not names:
+    def __init__(self, spans, boundary, budget, eod_id=None):
+        if not spans:
             raise ValueError("nothing to force")
-        self.names = [list(n) for n in names]
+        self.spans = [list(span) for span in spans]
+        if any(not span for span in self.spans):
+            raise ValueError("cannot force an empty span")
         self.boundary = set(boundary)
         self.budget = budget
+        self.eod_id = eod_id
         self.step = 0
-        self.next_name = 0
+        self.next_span = 0
         self.queue = []
-        # Evenly spaced, so the first name cannot eat the opening and starve
-        # the rest. Floor division keeps the last slot inside the budget.
-        self.due = [i * budget // len(names) for i in range(len(names))]
-        # A model that will not punctuate must not be allowed to swallow the
-        # remaining names; after this much grace a slot opens anyway.
-        self.slack = max(6, budget // (6 * len(names)))
+        self.due = [i * budget // len(spans) for i in range(len(spans))]
+        self.slack = max(6, budget // (6 * len(spans)))
 
     @property
     def fired(self):
-        """How many slots have opened. Equals len(names) when the run was
-        not starved by a budget too small for the schedule."""
-        return self.next_name
+        return self.next_span
+
+    @property
+    def complete(self):
+        return self.next_span == len(self.spans) and not self.queue
 
     def __call__(self, idx, logits):
         if idx.size(0) != 1:
-            raise ValueError("ForcedNames schedules a single story (batch 1)")
-        if not self.queue and self.next_name < len(self.names):
-            at = self.due[self.next_name]
+            raise ValueError("ForcedSpans schedules a single story (batch 1)")
+        if not self.queue and self.next_span < len(self.spans):
+            at = self.due[self.next_span]
             last = idx[0, -1].item()
             if (self.step == 0
                     or (self.step >= at and last in self.boundary)
                     or self.step >= at + self.slack):
-                self.queue = list(self.names[self.next_name])
-                self.next_name += 1
+                self.queue = list(self.spans[self.next_span])
+                self.next_span += 1
         if self.queue:
             mask = torch.full_like(logits, -float("inf"))
             mask[:, self.queue.pop(0)] = 0.0
             logits = mask
+        elif self.eod_id is not None and not self.complete:
+            logits = logits.clone()
+            logits[:, self.eod_id] = -float("inf")
         self.step += 1
         return logits

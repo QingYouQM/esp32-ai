@@ -13,7 +13,7 @@ import unittest
 
 import torch
 
-from research.kb.constrain import ForcedNames
+from research.kb.constrain import ForcedSpans
 
 PERIOD = 99
 VOCAB = 32
@@ -26,10 +26,10 @@ def step(policy, last_token):
     return torch.isfinite(out[0]).nonzero().flatten().tolist()
 
 
-class ForcedNamesTest(unittest.TestCase):
+class ForcedSpansTest(unittest.TestCase):
 
     def test_first_name_opens_the_story(self):
-        p = ForcedNames([[5, 6], [7]], boundary={PERIOD}, budget=20)
+        p = ForcedSpans([[5, 6], [7]], boundary={PERIOD}, budget=20)
         self.assertEqual(step(p, 1), [5])
         self.assertEqual(step(p, 5), [6])
         # Slot closed, and the second name is not due yet: the model is back in
@@ -37,7 +37,7 @@ class ForcedNamesTest(unittest.TestCase):
         self.assertEqual(step(p, 6), list(range(VOCAB)))
 
     def test_a_later_name_waits_for_a_sentence_break(self):
-        p = ForcedNames([[5], [7]], boundary={PERIOD}, budget=20)
+        p = ForcedSpans([[5], [7]], boundary={PERIOD}, budget=20)
         self.assertEqual(step(p, 1), [5])
         for _ in range(9):
             self.assertEqual(len(step(p, 5)), VOCAB)
@@ -46,15 +46,26 @@ class ForcedNamesTest(unittest.TestCase):
         self.assertEqual(step(p, PERIOD), [7])
 
     def test_a_model_that_never_punctuates_cannot_starve_the_rest(self):
-        p = ForcedNames([[5], [7]], boundary={PERIOD}, budget=20)
+        p = ForcedSpans([[5], [7]], boundary={PERIOD}, budget=20)
         step(p, 1)
         for _ in range(20):
             if step(p, 4) == [7]:
                 return
         self.fail("the second name never got a slot")
 
+    def test_eod_is_suppressed_until_every_span_is_complete(self):
+        p = ForcedSpans([[5], [6]], boundary={PERIOD}, budget=8, eod_id=9)
+        logits = p(torch.tensor([[1, 2]]), torch.zeros(1, VOCAB))
+        self.assertEqual(logits[0, 9].item(), -float("inf"))
+        step(p, 5)
+        step(p, 5)
+        step(p, 5)
+        step(p, PERIOD)
+        logits = p(torch.tensor([[1, 6]]), torch.zeros(1, VOCAB))
+        self.assertEqual(logits[0, 9].item(), 0.0)
+
     def test_a_batch_of_stories_is_refused(self):
-        p = ForcedNames([[5]], boundary={PERIOD}, budget=10)
+        p = ForcedSpans([[5]], boundary={PERIOD}, budget=10)
         with self.assertRaises(ValueError):
             p(torch.zeros(2, 3, dtype=torch.long), torch.zeros(2, VOCAB))
 

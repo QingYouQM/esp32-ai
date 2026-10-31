@@ -48,5 +48,13 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1913年起",
+      "福建集美",
+      "在集美陆续创建",
+      "普通教育与职业教育并重"
+    ]
   }
 }

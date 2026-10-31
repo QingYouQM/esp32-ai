@@ -48,5 +48,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1938年",
+      "新加坡",
+      "南洋华侨筹赈祖国难民总会",
+      "被推为主席",
+      "支援抗战"
+    ]
   }
 }

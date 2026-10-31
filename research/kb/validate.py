@@ -183,6 +183,24 @@ def check(entry, verbose=False):
         elif evidence not in haystack:
             add("error", "E4-EVIDENCE", f"{name}'s quote is not verbatim in source")
 
+    # Historical acceptance anchors must themselves come from the material.
+    # Otherwise the generator can be forced to repeat an unsupported claim.
+    acceptance = entry.get("acceptance")
+    if acceptance is not None and not isinstance(acceptance, dict):
+        add("error", "A1-FACTS", "acceptance must be an object")
+    elif acceptance is not None:
+        spans = acceptance.get("required_spans")
+        if not isinstance(spans, list) or not spans:
+            add("error", "A1-FACTS", "acceptance.required_spans must be a non-empty list")
+        else:
+            supported = normalise("".join(
+                str(fields[f].get("text", "")) for f in FIELDS))
+            for span in spans:
+                if not isinstance(span, str) or len(normalise(span)) < 2:
+                    add("error", "A1-FACTS", "acceptance spans must contain at least two characters")
+                elif normalise(span) not in supported:
+                    add("error", "A1-FACTS", f"acceptance span {span!r} is not in the material")
+
     # M3: the people the card declares must actually appear in the events.
     declared = listed_people(str(fields["人物"].get("text", "")))
     if not declared:

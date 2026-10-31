@@ -48,5 +48,15 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1904年",
+      "新加坡",
+      "新利川菠萝罐头厂",
+      "1925年",
+      "1200万元",
+      "橡胶大王"
+    ]
   }
 }

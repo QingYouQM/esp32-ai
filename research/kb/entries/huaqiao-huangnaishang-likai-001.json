@@ -51,5 +51,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1904年",
+      "诗巫",
+      "美国牧师富雅各",
+      "悄然回国",
+      "引种橡胶"
+    ]
   }
 }

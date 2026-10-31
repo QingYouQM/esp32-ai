@@ -52,5 +52,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1936年",
+      "新加坡",
+      "捐助5万元",
+      "购买橡胶园",
+      "收益充作厦大基金"
+    ]
   }
 }

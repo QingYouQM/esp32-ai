@@ -51,5 +51,15 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1913年至1952年",
+      "南洋",
+      "十多家报纸",
+      "以星字冠头",
+      "星系报业",
+      "规模最大、数量最多"
+    ]
   }
 }

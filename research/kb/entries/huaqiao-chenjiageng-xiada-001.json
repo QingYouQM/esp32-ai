@@ -48,5 +48,13 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1921年",
+      "福建厦门",
+      "创办厦门大学",
+      "院系最齐全的五所大学之一"
+    ]
   }
 }

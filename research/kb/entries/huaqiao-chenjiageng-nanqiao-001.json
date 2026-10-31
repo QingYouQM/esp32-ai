@@ -48,5 +48,14 @@
     "status": "draft",
     "by": null,
     "at": null
+  },
+  "acceptance": {
+    "required_spans": [
+      "1939年",
+      "滇缅公路",
+      "三千多名机工",
+      "运送抗战物资",
+      "一千多人因战火、车祸和疾病丧生"
+    ]
   }
 }
