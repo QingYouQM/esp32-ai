@@ -14,11 +14,15 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support import posix_bash, run_script
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "fetch_model.sh"
+BASH = posix_bash()
 
 FAKE_HF = """#!/usr/bin/env bash
 # Stands in for the huggingface CLI: copies a prepared directory into whatever
@@ -75,6 +79,12 @@ class FetchCase(unittest.TestCase):
         hf = self.bin / "hf"
         hf.write_text(FAKE_HF)
         hf.chmod(0o755)
+        # fetch_model.sh cross-checks metadata with python3, and on Windows
+        # that name can resolve to the Store placeholder, which exits 49
+        # without reading its arguments.
+        py = self.bin / "python3"
+        py.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+        py.chmod(0o755)
 
     def publish(self, files, pins=None, metadata=None):
         """Write the fake remote, and pin the script to `pins` (default: files)."""
@@ -90,12 +100,13 @@ class FetchCase(unittest.TestCase):
 
     def run_fetch(self, *args, extra_env=None):
         env = dict(os.environ, **(extra_env or {}))
-        env["PATH"] = f"{self.bin}:{env['PATH']}"
+        # os.pathsep, not ":": a colon-joined PATH is one unusable entry on
+        # Windows and the stubs are never found.
+        env["PATH"] = os.pathsep.join([str(self.bin), env["PATH"]])
         env["FAKE_HF_SRC"] = str(self.remote)
         env["TMPDIR"] = str(self.tmpdir)
-        return subprocess.run(
-            ["bash", str(self.root / "scripts" / "fetch_model.sh"), *args],
-            capture_output=True, text=True, env=env)
+        return run_script(BASH, self.bin, self.root / "scripts" / "fetch_model.sh",
+                          *args, env=env)
 
     def dest(self):
         return self.root / "artifacts" / self.MODEL
@@ -319,7 +330,8 @@ class TestInstallIsAllOrNothing(FetchCase):
                           f'DEST="{dest}"; WORK="{work}"; INSTALLING=1\n'
                           'STEPS=("aside model.bin" "new model.bin")\n'
                           f"restore; {second}\n")
-                r = subprocess.run(["bash", "-c", driver], capture_output=True, text=True)
+                r = subprocess.run([BASH, "-c", driver], capture_output=True,
+                                   text=True, encoding="utf-8", errors="replace")
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertTrue((dest / "model.bin").is_file(), "the second rollback deleted the old file")
                 self.assertEqual((dest / "model.bin").read_bytes(), b"old")
@@ -349,7 +361,11 @@ class TestInstallIsAllOrNothing(FetchCase):
             with self.subTest(returncode=expected):
                 r = self.run_fetch(self.MODEL)
                 self.assertEqual(r.returncode, expected, r.stderr)
-                self.assertIn(f"warning: {Path('artifacts') / self.MODEL / stale.name} is left over", r.stderr)
+                # The script prints the path it walked, which is always in
+                # POSIX form; Path() here would spell it with backslashes on
+                # Windows and never match.
+                where = f"artifacts/{self.MODEL}/{stale.name}"
+                self.assertIn(f"warning: {where} is left over", r.stderr)
                 self.assertEqual((stale / "old" / "model.bin").read_bytes(), b"only copy")
 
     def test_a_successful_replacement_leaves_nothing_temporary(self):

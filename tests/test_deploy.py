@@ -16,12 +16,16 @@ under old firmware.
 
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support import posix_bash
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "deploy.sh"
+BASH = posix_bash()
 
 # Each stub records the call and succeeds. `uv` also has to produce the headers
 # the real generators would, since the compile step is told to read them.
@@ -60,6 +64,7 @@ echo "PASS"
 """
 
 
+@unittest.skipUnless(BASH, "no bash that can see a Windows PATH (set GIT_BASH)")
 class DeployHarness(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -86,6 +91,13 @@ class DeployHarness(unittest.TestCase):
             p = self.bin / name
             p.write_text(STUB.format(name=name, body=body))
             os.chmod(p, 0o755)
+        # deploy.sh computes the fingerprint with python3. On Windows that name
+        # can resolve to the Store placeholder, which exits 49 without running
+        # anything, so the harness supplies the interpreter it is running under
+        # like it supplies every other tool.
+        py = self.bin / "python3"
+        py.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+        os.chmod(py, 0o755)
 
         self.port = Path(self.tmp.name) / "port"
         self.port.write_text("")
@@ -102,11 +114,17 @@ class DeployHarness(unittest.TestCase):
 
     def run_deploy(self, *args, **env):
         e = dict(os.environ)
-        e.update({"PATH": f"{self.bin}:{os.environ['PATH']}",
+        # os.pathsep, not ":": on Windows a colon-joined PATH is one unusable
+        # entry, the stubs are invisible, and every test sees 127 instead.
+        e.update({"PATH": os.pathsep.join([str(self.bin), os.environ["PATH"]]),
                   "CALL_LOG": str(self.log), "PORT": str(self.port)})
         e.update(env)
-        return subprocess.run(["bash", "scripts/deploy.sh", *args],
-                              cwd=self.repo, env=e, capture_output=True, text=True)
+        # The stubs and the shell echo tool output that may be in the host
+        # locale; decoding it strictly aborts the reader thread and hands back
+        # stderr=None, which fails the assertions for the wrong reason.
+        return subprocess.run([BASH, "scripts/deploy.sh", *args],
+                              cwd=self.repo, env=e, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
 
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
