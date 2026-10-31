@@ -1,4 +1,8 @@
-"""Make the declared names appear by construction, not by hope.
+"""Optional style switch: make the declared names appear by construction.
+
+Not part of the shipped contract (docs/zh-story-prompt.md): with it on, the
+output is no longer the model's own choice, so it cannot be used to judge the
+checkpoint. Kept as a per-request option for demos where a name must appear.
 
 A 3M-parameter core cannot copy a string across context: measured on 24 real
 cards, the entity rate was 0% on every checkpoint, and the names it did produce

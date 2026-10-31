@@ -7,6 +7,12 @@ The format is fixed by [docs/zh-material-spec.md](../../docs/zh-material-spec.md
 The training corpus and this set have to be byte-identical, because the model
 learns one shape and is deployed on that same shape.
 
+The card is a **seed for a story, not a source of facts**: measured on 24 real
+cards the model reproduces neither the names nor the events, at 3M or at 10M.
+The shipped contract (what a story must and must not do) is
+[docs/zh-story-prompt.md](../../docs/zh-story-prompt.md); the release gate there
+is `accept.py`, not entity coverage.
+
 ```
 schema.json          what an entry may contain
 render.py            entry -> card text (the only writer of the format)
@@ -25,7 +31,7 @@ uv run python -m research.kb.render research/kb/entries/x.json # card text
 Validation is not advisory. An entry with an error has no quote behind one of
 its fields, or a person who never acts, or two hundred characters of material
 where three hundred are allowed. None of that shows up in the model's output as
-an error - it shows up as a story about the wrong person, told confidently.
+an error - it shows up as a prompt that reads wrong and seeds a worse story.
 
 ## What is checked
 

@@ -1,4 +1,9 @@
-"""Measure whether a checkpoint actually uses the material it is given.
+"""Diagnostic: measure whether a checkpoint uses the material it is given.
+
+This is not the release gate any more -- see docs/zh-story-prompt.md and
+research/kb/accept.py. It stays because "0% entity, 0% event" is the evidence
+behind that decision, and because a future copy mechanism has to beat these
+numbers. Entity/event are, by measurement, always ~0%; do not gate on them.
 
 Loss on a held-out split says nothing about the only thing that matters here:
 does the story contain the people and events of the card in front of it. Two
