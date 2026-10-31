@@ -137,6 +137,24 @@ def train_tokenizer(text):
     return tok
 
 
+def flatten(docs, eot):
+    """Documents in order, each closed by exactly one endoftext.
+
+    This has to be interleaved, not appended in a block at the end. Appending
+    reads the same in code and is wrong in every way that shows up later: with
+    no boundary between documents the model is trained to continue straight from
+    one story into the next document's header, so it never learns to stop, and
+    the only endoftext tokens it ever sees are one huge run at the very tail of
+    the array. The symptom is a sampler that answers a story with the next
+    card's "人物：..." instead of ending.
+    """
+    out = []
+    for enc in docs:
+        out.extend(enc)
+        out.append(eot)
+    return np.array(out, dtype=np.uint16)
+
+
 def main():
     global VOCAB_SIZE, TAG, SOURCE_URL, CORPUS, DOC_SEP, SLICE_BYTES, MARKERS
 
@@ -263,12 +281,10 @@ def main():
             f"Lower --seq-len or add documents."
         )
 
-    arr = np.array([i for e in train_docs for i in e] + [eot] * len(train_docs),
-                   dtype=np.uint16)
+    arr = flatten(train_docs, eot)
     assert arr.max() < VOCAB_SIZE
     arr.tofile(out / "train.bin")
-    val_arr = np.array([i for e in val_docs for i in e] + [eot] * len(val_docs),
-                       dtype=np.uint16)
+    val_arr = flatten(val_docs, eot)
     assert val_arr.max() < VOCAB_SIZE
     val_arr.tofile(out / "val.bin")
     print(f"train {len(arr):,} tokens / val {len(val_arr):,} tokens "
