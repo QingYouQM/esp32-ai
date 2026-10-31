@@ -299,7 +299,7 @@ class TinyLM(nn.Module):
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40,
-                 repetition_penalty=1.0, no_repeat_ngram=0):
+                 repetition_penalty=1.0, no_repeat_ngram=0, logits_processor=None):
         # Appending a sample to idx requires that a sampled index IS a token
         # id. Under a distinct output alphabet it is a class, and the class to
         # token map is model data rather than architecture, so the caller owns
@@ -337,6 +337,11 @@ class TinyLM(nn.Module):
             if top_k:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float("inf")
+            if logits_processor is not None:
+                # Applied last on purpose: a forced token is -inf-ed out by
+                # top_k and by the n-gram ban like any other, so the deciding
+                # mask has to be the final word before softmax.
+                logits = logits_processor(idx, logits)
             probs = F.softmax(logits, dim=-1)
             idx = torch.cat([idx, torch.multinomial(probs, 1)], dim=1)
         return idx
