@@ -135,36 +135,45 @@ ground 版单一主角、场景连贯；mixfix 版名字干净但多人乱入；
 
 **剩下的风险不在代码里**：故事里的人名和事实是编的。设备 UI 必须标"虚构故事，非史实"，否则用户会把陈嘉庚当成在码头搬箱子的人。
 
-## 恢复命令
+## 恢复命令（C 的出厂候选，整条链）
 
 ```bash
-# 语料：直出（有姓名/年份）
-uv run python -m research.tinystories.make_pairs_direct \
-    --count 20000 --workers 6 --out research/tinystories/seeds/zh/pairs2.txt
+# 1) 真语料：旧 pairs（无姓名）+ 新 pairs2（有姓名/年份）
+cat research/tinystories/seeds/zh/pairs.txt \
+    research/tinystories/seeds/zh/pairs2.txt > data/combined.txt
 
-# 审查
-uv run python -m research.tinystories.audit_pairs research/tinystories/seeds/zh/pairs2.txt
+# 2) 第一轮合成复制任务：8000 条模板卡，故事逐字引用材料
+uv run python -m research.tinystories.make_copy_task \
+    --count 8000 --out data/copy-task/synthetic.txt
+cat data/copy-task/synthetic.txt data/combined.txt > data/copy-task/combined.txt
 
-# 切分（记得用新 tag）
-uv run python -m research.tinystories.prepare --tag zh-p2 --vocab 16384 \
-    --corpus research/tinystories/seeds/zh/pairs2.txt --seq-len 512 \
+# 3) 第二轮：把每篇故事的开口换成卡片自己的 起因 句（22651 篇 = 8000 合成 + 14651 真）
+uv run python -m research.tinystories.ground_stories \
+    --in data/copy-task/combined.txt --out data/copy2/combined.txt
+
+# 4) 切分（注意 markers，少了它们 <|material|>/<|story|> 会被切碎）
+uv run python -m research.tinystories.prepare --tag zh-ground --vocab 16384 \
+    --corpus data/copy2/combined.txt --seq-len 512 \
     --val-fraction 0.02 --markers '<|material|>,<|story|>'
 
-# 训练
+# 5) 训练 3M（出厂候选，约 4 分钟）
 uv run python -m research.tinystories.train --arm ple --target-core 3000000 \
     --steps 2500 --batch-size 16 --seq-len 512 --vocab 16384 \
-    --data-dir data/zh-p2/vocab-16384 --ple-dim 128 --d-model 128 \
-    --n-layers 8 --n-heads 4 --tag zh-p2 --dropout 0.1 \
+    --data-dir data/zh-ground/vocab-16384 --ple-dim 128 --d-model 128 \
+    --n-layers 8 --n-heads 4 --tag zh-ground --dropout 0.1 \
     --keep-best --mask-material
 
-# 出厂验收（C 的五个指标）——发货前必须跑这个
+# 6) 出厂验收（C 的五项，发货前必须跑）
 uv run python -m research.kb.accept --run runs/ple-zh-ground-s0-best.pt \
     --tokenizer data/zh-ground/vocab-16384/tokenizer.json
 
-# 诊断：模型到底读没读材料（长期 0%，不是门槛）
-uv run python -m research.kb.coverage --run runs/<ckpt>.pt \
-    --tokenizer data/<tag>/vocab-16384/tokenizer.json
+# 7) 诊断：读没读材料（长期 0%，不是门槛）
+uv run python -m research.kb.coverage --run runs/ple-zh-ground-s0-best.pt \
+    --tokenizer data/zh-ground/vocab-16384/tokenizer.json
 ```
+
+B 的扩容版（已否证，留档）：在第 5 步加 `--target-core 10000000 --d-model 256 --n-heads 8`，
+其余不变，tag 用 `zh-b10`，约 10 分钟。
 
 ## 还没做的（C 之后）
 
@@ -175,5 +184,6 @@ uv run python -m research.kb.coverage --run runs/<ckpt>.pt \
 ## 环境备注
 
 - GPU 8GB，batch 64 × seq 512 × vocab 16384 会 OOM（logits 2.1GB），用 batch 16
-- GitHub 直连不稳，推送经常失败，需代理
-- 分支 `zh-tinystories` 领先 `mine/zh-tinystories`，重启后先 `git push`
+- GitHub 直连不稳（`Connection was reset`），走本机 Clash 混合端口：
+  `git -c http.proxy=http://127.0.0.1:7897 push mine <branch>`
+- `zh-tinystories` 与 `zh-copy-task` 都已推到 `mine` 并设了上游
