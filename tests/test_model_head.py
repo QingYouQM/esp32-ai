@@ -184,5 +184,39 @@ class TestGenerate(unittest.TestCase):
             torch.zeros(1, 2, dtype=torch.long), 2).shape), (1, 4))
 
 
+class TestRepeatScope(unittest.TestCase):
+    """Quoting the prompt verbatim is allowed only in the generated scope.
+
+    Material-conditioned stories must copy spans out of the prompt. With the
+    historical "all" scope the 4-gram ban sees the prompt too and makes every
+    quote longer than three tokens impossible, which silently zeroed the
+    fact-anchor measurements until 2026-11-01.
+    """
+    def _banned_steps(self, scope):
+        model = build(**SYMMETRIC)
+        targets = [10, 11, 12, 13]      # the prompt, quoted back verbatim
+        banned = []
+
+        def probe(idx, logits):
+            step = idx.size(1) - len(targets)
+            if step < len(targets):
+                t = targets[step]
+                banned.append(step >= 3 and bool(torch.isinf(logits[0, t]).item()))
+                forced = torch.full_like(logits, -1e9)
+                forced[0, t] = 0.0    # force the quote even where banned
+                return forced
+            return logits
+
+        model.generate(torch.tensor([targets]), 4, no_repeat_ngram=4,
+                       top_k=0, logits_processor=probe, repeat_scope=scope)
+        return banned
+
+    def test_generated_scope_allows_quoting_the_prompt(self):
+        self.assertEqual(self._banned_steps("generated"), [False] * 4)
+
+    def test_all_scope_bans_the_fourth_token_of_a_quote(self):
+        self.assertTrue(self._banned_steps("all")[3])
+
+
 if __name__ == "__main__":
     unittest.main()

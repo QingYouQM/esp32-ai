@@ -299,11 +299,22 @@ class TinyLM(nn.Module):
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40,
-                 repetition_penalty=1.0, no_repeat_ngram=0, logits_processor=None):
+                 repetition_penalty=1.0, no_repeat_ngram=0, logits_processor=None,
+                 repeat_scope="all"):
         # Appending a sample to idx requires that a sampled index IS a token
         # id. Under a distinct output alphabet it is a class, and the class to
         # token map is model data rather than architecture, so the caller owns
         # both the map and the sampling loop.
+        #
+        # repeat_scope: what the anti-repetition devices look at. "all" is the
+        # historical behaviour and treats prompt and generation as one stream.
+        # "generated" confines both the penalty window and the n-gram ban to
+        # the tokens this call produces. The distinction is existential for
+        # material-conditioned generation: the model is *supposed* to quote
+        # spans from the prompt, and a ban that sees the prompt forbids every
+        # quote longer than no_repeat_ngram - 1 tokens before it starts.
+        if repeat_scope not in ("all", "generated"):
+            raise ValueError(f"repeat_scope must be 'all' or 'generated', got {repeat_scope!r}")
         if not self.cfg.output_ids_are_input_ids:
             raise ValueError(
                 f"generate() needs the head to span the input vocabulary, but "
@@ -311,23 +322,30 @@ class TinyLM(nn.Module):
                 f"and reads {self.cfg.vocab_size} tokens; sample with the "
                 f"output-class to input-token map instead"
             )
+        prompt_len = idx.size(1)
         for _ in range(max_new_tokens):
             idx_c = idx[:, -self.cfg.seq_len :]
             logits, _ = self(idx_c)
             logits = logits[:, -1, :].float() / max(temperature, 1e-6)
             if repetition_penalty != 1.0:
                 window = idx[:, -256:]
+                if repeat_scope == "generated":
+                    window = idx[:, max(prompt_len, idx.size(1) - 256):]
                 for b in range(idx.size(0)):
                     seen = torch.unique(window[b])
+                    if seen.numel() == 0:
+                        continue
                     vals = logits[b, seen]
                     logits[b, seen] = torch.where(vals > 0, vals / repetition_penalty,
                                                   vals * repetition_penalty)
-            if no_repeat_ngram > 0 and idx.size(1) >= no_repeat_ngram:
+            if no_repeat_ngram > 0 and idx.size(1) - prompt_len >= no_repeat_ngram - 1:
                 # Cheap and decisive: a 4-gram that already appeared cannot be
                 # completed again. Small models fall into loops ("学小鸟的样子"
                 # nine times) and no amount of temperature tuning fixes it.
                 for b in range(idx.size(0)):
                     seq = idx[b].tolist()
+                    if repeat_scope == "generated":
+                        seq = seq[prompt_len:]
                     prefix = tuple(seq[-(no_repeat_ngram - 1):])
                     banned = {seq[i + no_repeat_ngram - 1]
                               for i in range(len(seq) - no_repeat_ngram + 1)

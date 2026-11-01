@@ -81,7 +81,8 @@ def main():
         torch.manual_seed(args.seed)
         out = model.generate(x, args.tokens, temperature=args.temperature,
                              top_k=40, repetition_penalty=args.repetition_penalty,
-                             no_repeat_ngram=4, logits_processor=policy)[0].tolist()
+                             no_repeat_ngram=4, logits_processor=policy,
+                             repeat_scope="generated")[0].tolist()
         out = out[len(ids):]
         if eod is not None and eod in out:
             out = out[:out.index(eod)]

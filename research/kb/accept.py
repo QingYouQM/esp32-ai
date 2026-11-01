@@ -165,6 +165,10 @@ def decode_candidate(model, tok, entry, args, device, attempt):
         repetition_penalty=args.repetition_penalty,
         no_repeat_ngram=4,
         logits_processor=policy,
+        # The story is *required* to quote spans from the material. A ban that
+        # scans the prompt would make every required quote impossible and had
+        # been quietly zeroing the fact-anchor measurements.
+        repeat_scope="generated",
     )[0].tolist()[len(ids):]
     eod = tok.token_to_id("<|endoftext|>")
     stopped = eod is not None and eod in out
