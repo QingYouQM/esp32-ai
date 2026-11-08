@@ -166,3 +166,14 @@ story3（ple-zh-story3-s0）已走完整条片上部署管线，等板子即刷�
   （"闪电划破长空"×3），温度 0.8 下无复读且成篇（估 7.5/10）
 - 新 prompt ids：「一天，」= {524, 258}（story4 tokenizer），ino 已同步
 - 待办 B：板端+sample.py 同步加重复惩罚（纯解码期，不碰训练/权重）
+
+## B 阶段：重复惩罚上线（2026-11-08 晚）
+
+- 固件：REPETITION_PENALTY_PCT=130（整数百分比，规避预处理器浮点比较），
+  16384 位位图去重（2KB 静态 SRAM），argmax 前对已见 token 施 CTRL 惩罚，
+  每步惩罚不累积（logits 每步重算）
+- PC 对齐：model.py generate() 加 repetition_penalty 参数（逐 unique token，
+  >0 除否则乘），sample.py 加 --repetition-penalty 透传
+- 效果（story4 + 惩罚 1.30 + 贪婪）："闪电划破长空"×3 → ×1，故事完整成篇，
+  自然收尾"终于松了一口气"。该输出即板端将逐字输出的内容
+- 纯解码期改动：不碰训练/权重/golden，story4 产物与三 gate 结果不受影响

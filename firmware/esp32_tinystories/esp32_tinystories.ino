@@ -46,6 +46,15 @@
 // 512 is what makes the fp32 KV cache fit alongside the staged core.
 #define DEV_SEQ 256
 
+// Repetition penalty (CTRL-style), applied before the argmax: every token
+// seen in the prompt or generated so far has its logit divided by this when
+// positive and multiplied when negative, once per unique token. Must match
+// sample.py's repetition_penalty exactly - acceptance parity relies on it.
+// 100 (= 1.0x) disables the penalty entirely. The percent form exists because
+// the preprocessor cannot compare float literals in #if.
+#define REPETITION_PENALTY_PCT 130
+#define REPETITION_PENALTY (REPETITION_PENALTY_PCT / 100.0f)
+
 static const int PROMPT_IDS[] = {524, 258}; // "一天，" (zh-story4 tokenizer)
 // Backstop only: the model closes its own story with the end-of-text token
 // (id 0) and the loop below stops there, which lands near 120 tokens for a
@@ -188,6 +197,18 @@ static void emit(int tok) {
 #endif
 }
 
+// Repetition-penalty bookkeeping: one bit per token id (16384 vocab -> 2KB
+// static SRAM). A token is penalized once, however often it appears.
+#define VOCAB_BITMAP_BYTES ((VOCAB_N + 7) / 8)
+static uint8_t seen[VOCAB_BITMAP_BYTES];
+
+static inline void seen_mark(int tok) {
+  seen[tok >> 3] |= (uint8_t)(0x80u >> (tok & 7));
+}
+static inline int seen_has(int tok) {
+  return seen[tok >> 3] & (0x80u >> (tok & 7));
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1500);
@@ -279,8 +300,10 @@ void setup() {
   int64_t decode_us = 0;
   int decoded = 0;
 
+  memset(seen, 0, sizeof(seen));  // fresh story, fresh penalty state
   for (int i = 0; i < n_prompt; i++) {  // prime with the prompt
     tok = PROMPT_IDS[i];
+    seen_mark(tok);
     emit(tok);
     llm_forward(&model, tok, pos++, &s);
   }
@@ -289,11 +312,24 @@ void setup() {
 
   int64_t t_start = esp_timer_get_time();
   for (int step = 0; step < N_GENERATE && pos < DEV_SEQ; step++) {
+#if REPETITION_PENALTY_PCT != 100
+    // CTRL-style penalty over every token seen so far. Applied to a fresh
+    // logits buffer each step, so penalties never accumulate. Must stay in
+    // lockstep with generate(repetition_penalty=...) in src/model.py.
+    for (int v = 0; v < model.out_vocab; v++) {
+      if (seen_has(v)) {
+        s.logits[v] = (s.logits[v] > 0.f)
+                          ? s.logits[v] / REPETITION_PENALTY
+                          : s.logits[v] * REPETITION_PENALTY;
+      }
+    }
+#endif
     int best = 0; float bv = -1e30f;
     for (int v = 0; v < model.out_vocab; v++)
       if (s.logits[v] > bv) { bv = s.logits[v]; best = v; }
     if (best == 0) break;  // end-of-text token: the model closed the story
     tok = best;
+    seen_mark(tok);
     emit(tok);
     blink((step & 1) ? 40 : 8);
 

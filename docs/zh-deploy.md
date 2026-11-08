@@ -23,8 +23,8 @@ python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/
 - staging_verify.c：int8 驻留 == int4、钩子分发 57/57、头部校验全绿 → PASS (0 failures)
 - ppl（`data/zh/vocab-16384/val.bin`）：fp32 CE 3.0897 / int8 CE 3.0904，量化代价 +0.0007 nats
   （训练 fp32 val 3.0088 / ppl 20.26，int4 代价 ~0.08）
-- PC 贪婪解码（temperature 0，与板端 argmax 一致）：主人公稳定（小明→爸爸），
-  残留问题是贪婪短语复读（"闪电划破长空"×3），重复惩罚为后续固件增强（见下）
+- PC 贪婪解码 + 重复惩罚 1.30（temperature 0，与板端 argmax+penalty 一致）：
+  复读消失，故事完整成篇（打雷→害怕→安慰→松口气，~200 字），主人公稳定
 
 ## 已做的中文适配
 
@@ -33,6 +33,8 @@ python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/
 - `N_GENERATE = 230`（新语料压缩率 1.70 字/token，200 字 ≈ 118 token，230 是兜底）
 - `DEV_SEQ 256`：KV cache 按 256 分配（fp32 下 3.15MB，否则 PSRAM 爆）
 - `STAGE_HEAD_INT8 0`：head 不驻留 int8（省 3.15MB，走 flash int4 直读）
+- `REPETITION_PENALTY_PCT 130`：CTRL 式重复惩罚（位图去重，argmax 前施压），
+  与 `sample.py --repetition-penalty 1.30` 公式逐位一致，保证验收对齐；100=关闭
 - EOT(id 0) 停止判断已存在
 
 PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余 ~1.6MB。
@@ -65,7 +67,7 @@ PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余
 
 ## 已知边界
 
-- 模型质量：新语料后主人公漂移已解决；贪婪解码的短语复读计划用重复惩罚
-  （固件 argmax 前压已生成 token 的 logits，`sample.py` 同步实现保证验收一致）
+- 模型质量：新语料 + 重复惩罚后，主人公漂移与贪婪复读均已解决；
+  剩余瑕疵是偶发的语义小跳跃（3M 参数天花板），升级需换更强教师或加参数
 - 端侧中文输入未做（`runtime/bpe_tokenizer.h` 仍 ASCII-only）；prompt 烘焙在固件里
 - greedy 生成确定性输出，同样 prompt 永远同一篇故事（验收基线即 PC 上的输出）

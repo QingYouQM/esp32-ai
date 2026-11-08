@@ -293,7 +293,7 @@ class TinyLM(nn.Module):
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=0.8, top_k=40,
-                 stop_token=None):
+                 stop_token=None, repetition_penalty=1.0):
         # Appending a sample to idx requires that a sampled index IS a token
         # id. Under a distinct output alphabet it is a class, and the class to
         # token map is model data rather than architecture, so the caller owns
@@ -309,6 +309,15 @@ class TinyLM(nn.Module):
             idx_c = idx[:, -self.cfg.seq_len :]
             logits, _ = self(idx_c)
             logits = logits[:, -1, :]
+            if repetition_penalty != 1.0:
+                # CTRL-style penalty over every token in the context, once per
+                # unique token. Must stay in lockstep with the firmware loop
+                # (REPETITION_PENALTY_PCT in esp32_tinystories.ino).
+                for t in torch.unique(idx[0]).tolist():
+                    if logits[0, t] > 0:
+                        logits[0, t] /= repetition_penalty
+                    else:
+                        logits[0, t] *= repetition_penalty
             if temperature <= 0:
                 nxt = torch.argmax(logits, dim=-1, keepdim=True)  # greedy, matches device argmax
             else:

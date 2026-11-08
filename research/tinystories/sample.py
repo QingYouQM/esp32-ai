@@ -48,6 +48,9 @@ def main():
     ap.add_argument("--prompt", default="Once upon a time")
     ap.add_argument("--tokens", type=int, default=200)
     ap.add_argument("--temperature", type=float, default=0.8)
+    ap.add_argument("--repetition-penalty", type=float, default=1.0,
+                    help="CTRL-style penalty on context tokens; firmware uses "
+                         "1.30 (REPETITION_PENALTY_PCT=130) for acceptance runs")
     ap.add_argument("--samples", type=int, default=3)
     ap.add_argument("--seed", type=int, default=0,
                     help="sampling seed; generation is stochastic at temperature > 0")
@@ -76,7 +79,8 @@ def main():
     print(f"{Path(args.run).name}  core={b['core']:,} table={b['table']:,}\n")
     for i in range(args.samples):
         out = model.generate(ids, args.tokens, temperature=args.temperature,
-                             stop_token=stop_token)
+                             stop_token=stop_token,
+                             repetition_penalty=args.repetition_penalty)
         print(f"--- sample {i + 1} ---")
         print(tok.decode(out[0].tolist()).strip(), "\n")
 
