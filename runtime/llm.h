@@ -419,6 +419,7 @@ typedef struct {
   float *x, *h, *qkv, *att, *g1, *g2, *ple, *tmpP, *trow, *logits;
   float *scores; // [seq_len], reused by each attention head
   float *kcache, *vcache; // [L * seq_len * D]
+  int kv_len;             // KV cache length the caller allocated for; 0 = c.seq_len
 #ifdef LLM_PROFILE
   struct {
     uint64_t input_us, attn_us, ffn_us, ple_us, head_us;
@@ -441,7 +442,7 @@ static void llm_profile_reset(Scratch *s) {
 
 static void llm_forward(Model *m, int token, int pos, Scratch *s) {
   int D = m->c.dim, L = m->c.n_layers, P = m->c.ple_dim, F = m->c.ffn;
-  int H = m->c.n_heads, Dh = D / H, S = m->c.seq_len;
+  int H = m->c.n_heads, Dh = D / H, S = s->kv_len > 0 ? s->kv_len : m->c.seq_len;
 #ifdef LLM_PROFILE
   uint64_t profile_t0 = (uint64_t)LLM_PROFILE_NOW();
 #endif

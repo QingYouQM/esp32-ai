@@ -129,3 +129,24 @@ uv run python -m research.tinystories.export zh-s0 --tokenizer data/zh/tokenizer
    - `display.h` 只有 6x8 ASCII 点阵，**汉字只能走串口**，OLED 需设 `USE_DISPLAY 0`
    - 若要端侧中文输入：`runtime/bpe_tokenizer.h` 目前 ASCII-only（`>= 0x80` 直接拒绝）
 5. `scripts/fetch_model.sh` 的 PINNED sha256 是官方英文模型的；本地训练产物不走这条路径
+
+## 端侧部署（2026-11-08）
+
+story3（ple-zh-story3-s0）已走完整条片上部署管线，等板子即刷：
+
+- 导出：`artifacts/zh/model.bin` 11.87MB / 85 张量（int4 组 128，tied head）
+- gate：verify.c PASS（max|diff| 1e-5）；staging_verify.c PASS 0 failures；
+  ppl fp32 4.0644 / int8 4.0659（int8 激活代价 +0.0015 nats）
+- vocab.h：中文 16384 token / 126KB；prompt「一天，」= {484, 259}
+- 固件：PROMPT_IDS 中文、USE_DISPLAY 0、N_GENERATE 230、DEV_SEQ 256、
+  STAGE_HEAD_INT8 0；llm.h 新增 Scratch.kv_len（0=全长，host 行为不变）
+- **PSRAM 账**（推翻旧"KV fp16"方案）：core+head 全驻留 6.15MB 必爆 8MB，
+  最终 core 3.0 驻留 + head 留 flash int4 直读 + KV fp32@256 3.15 + logits 0.06
+  ≈ 6.2MB，余 1.6MB
+- 修复：export.py / generate_vocab.py 的 global 声明 SyntaxError；
+  model.py generate() 补 temperature<=0 贪婪分支；verify.c / ppl.c 补 kv_len 初始化
+- 工具链：uv 坏（基础解释器被升级+Dev Drive 信任问题），改用
+  .venv python 直调 + PYTHONPATH=src;site-packages；host gate 用
+  d:/CodingTrash/tools/w64devkit 的 gcc 16.2
+- 部署步骤见 `artifacts/zh/DEPLOY.md`；PC 验收（temperature 0 贪婪，与板端一致）
+  故事成篇 ~200 字，天花板仍是语料（他/她混用、指代漂移）

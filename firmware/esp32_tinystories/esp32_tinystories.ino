@@ -29,17 +29,28 @@
 #include "generated/vocab.h"
 
 // Set to 1 once a display is wired up - see display.h.
-// Leave 0 to run serial-only (no panel needed).
-#define USE_DISPLAY 1
+// Leave 0 to run serial-only (no panel needed). The Chinese model needs this:
+// display.h only carries a 6x8 ASCII font, so Chinese goes out over serial.
+#define USE_DISPLAY 0
 #if USE_DISPLAY
 #include "display.h"
 #endif
 
-static const int PROMPT_IDS[] = {433, 447, 259, 405}; // "Once upon a time"
+// Chinese model (artifacts/zh): the head is NOT staged to int8 - core (3.0MB)
+// + head (3.15MB) + KV would not fit the 8MB PSRAM. The head runs straight
+// from its flash-resident int4 rows instead.
+#define STAGE_HEAD_INT8 0
+
+// Device-side context cap. Stories stop at EOT well before this (~130-230
+// tokens for 150-200 characters); capping KV at 256 instead of the trained
+// 512 is what makes the fp32 KV cache fit alongside the staged core.
+#define DEV_SEQ 256
+
+static const int PROMPT_IDS[] = {484, 259}; // "一天，"
 // Backstop only: the model closes its own story with the end-of-text token
 // (id 0) and the loop below stops there, which lands near 120 tokens for a
 // 150-200 character Chinese story.
-static const int N_GENERATE = 130;
+static const int N_GENERATE = 230;
 
 Model model;
 Scratch s;
@@ -148,9 +159,13 @@ static void alloc_scratch() {
   // logits: out_vocab floats, 99 KiB here, read once per token. Left in PSRAM
   // rather than spend a fifth of internal SRAM on it.
   s.logits = (float *)ps_or_die((size_t)model.out_vocab * 4, "logits");
-  // KV cache: 1.1MB, read once per position rather than per matvec.
-  s.kcache = (float *)ps_or_die((size_t)L * S * D * 4, "kcache");
-  s.vcache = (float *)ps_or_die((size_t)L * S * D * 4, "vcache");
+  // KV cache: sized for DEV_SEQ, not the trained seq_len (512). At 8 layers x
+  // 256 x 192 fp32 this is 1.57MB per cache; at the full 512 it would be 3.15MB
+  // each and the Chinese model would not fit PSRAM. llm_forward steps the
+  // caches with s.kv_len, set below.
+  s.kcache = (float *)ps_or_die((size_t)L * DEV_SEQ * D * 4, "kcache");
+  s.vcache = (float *)ps_or_die((size_t)L * DEV_SEQ * D * 4, "vcache");
+  s.kv_len = DEV_SEQ;
 }
 
 static void blink(uint8_t g) {
@@ -219,13 +234,17 @@ void setup() {
     Serial.printf("FATAL: staged %d/%d core tensors\n", staged, want);
     while (1) delay(1000);
   }
+#if STAGE_HEAD_INT8
   // The tied head is read per token, not per position, so the core helper does
-  // not walk it. Stage it too: it is 85%% of the dense MACs.
+  // not walk it. Stage it too: it is 85%% of the dense MACs. The English model
+  // does this; the Chinese model cannot afford the 3.15MB (see STAGE_HEAD_INT8
+  // above) and runs the head straight from flash int4 via the w8==NULL path.
   {
     void *b = ps_or_die(llm_stage_int8_bytes(&model.out_head), "staged head");
     llm_stage_int8(&model.out_head, b);
     ++staged;
   }
+#endif
   Serial.printf("weights-> PSRAM  %d tensors int8, %.2f MB allocated\n",
                 staged, psram_used / 1048576.0);
 
@@ -269,7 +288,7 @@ void setup() {
   llm_profile_reset(&s);
 
   int64_t t_start = esp_timer_get_time();
-  for (int step = 0; step < N_GENERATE && pos < model.c.seq_len; step++) {
+  for (int step = 0; step < N_GENERATE && pos < DEV_SEQ; step++) {
     int best = 0; float bv = -1e30f;
     for (int v = 0; v < model.out_vocab; v++)
       if (s.logits[v] > bv) { bv = s.logits[v]; best = v; }
