@@ -12,6 +12,10 @@
 | `verify.exe` / `staging_verify.exe` / `ppl_int8.exe` / `ppl_fp32.exe` | host gate 工具（w64devkit gcc 16.2 编译） |
 
 `firmware/esp32_tinystories/generated/vocab.h` 已是中文版（16384 token，126KB blob）。
+该目录被 .gitignore 排除，新环境需重新生成：
+```
+python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/zh/tokenizer.json
+```
 
 ## 已通过的验收记录
 
