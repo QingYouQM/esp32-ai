@@ -113,6 +113,7 @@ def verify_tokenizer(ck, tokenizer_path, allow_unverified):
 
 
 def main():
+    global OUT
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("tag", nargs="?", default="ple-cleandeploy-s0",
                     help="checkpoint tag under runs/, without .pt")
@@ -124,7 +125,6 @@ def main():
     # artifacts/<out>/: a second corpus exports beside the first instead of over.
     ap.add_argument("--out", default=OUT)
     args = ap.parse_args()
-    global OUT
     OUT = args.out
     tag = args.tag
     os.makedirs(OUT, exist_ok=True)

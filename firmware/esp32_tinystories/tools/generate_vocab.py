@@ -16,7 +16,7 @@ SKETCH = Path(__file__).resolve().parent.parent
 ROOT = SKETCH.parent.parent
 DEFAULT_TOK = ROOT / "artifacts" / "tinystories" / "tokenizer.json"
 DEFAULT_OUT = SKETCH / "generated" / "vocab.h"
-PROMPT = "Once upon a time"
+PROMPT = "一天，"
 
 
 def main():
@@ -24,8 +24,10 @@ def main():
     ap.add_argument("--tokenizer", default=DEFAULT_TOK,
                     help="canonical tokenizer.json the header is built from")
     ap.add_argument("--out", default=DEFAULT_OUT, help="header to write")
+    ap.add_argument("--prompt", default=PROMPT,
+                    help="demo prompt whose ids are printed for the sketch")
     args = ap.parse_args()
-    TOK, OUT = args.tokenizer, args.out
+    TOK, OUT, prompt = args.tokenizer, args.out, args.prompt
 
     tok = Tokenizer.from_file(str(TOK))  # rejects PathLike
     V = tok.get_vocab_size()
@@ -57,8 +59,8 @@ def main():
 
     print(f"wrote {OUT}: {V} tokens, blob {len(blob)/1024:.0f} KB")
 
-    ids = tok.encode(PROMPT).ids
-    print(f'prompt "{PROMPT}" -> {len(ids)} ids: {ids}')
+    ids = tok.encode(prompt).ids
+    print(f'prompt "{prompt}" -> {len(ids)} ids: {ids}')
     print(f"round-trip: {tok.decode(ids)!r}")
     print("\nPaste into the sketch:")
     print(f"static const int PROMPT_IDS[] = {{{', '.join(map(str, ids))}}};")

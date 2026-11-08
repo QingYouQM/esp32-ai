@@ -38,6 +38,7 @@ int main(int argc, char **argv) {
   s.ple = malloc(L*P*4); s.tmpP = malloc(L*P*4); s.trow = malloc(L*P*4);
   s.logits = malloc(V*4); s.scores = malloc(S*4);
   s.kcache = malloc((size_t)L*S*D*4); s.vcache = malloc((size_t)L*S*D*4);
+  s.kv_len = 0;  // full seq_len caches
 
   size_t vn; uint16_t *val = (uint16_t *)read_file(valp, &vn);
   size_t n_tok = vn / 2;

@@ -308,12 +308,16 @@ class TinyLM(nn.Module):
         for _ in range(max_new_tokens):
             idx_c = idx[:, -self.cfg.seq_len :]
             logits, _ = self(idx_c)
-            logits = logits[:, -1, :] / temperature
-            if top_k:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float("inf")
-            probs = F.softmax(logits, dim=-1)
-            nxt = torch.multinomial(probs, 1)
+            logits = logits[:, -1, :]
+            if temperature <= 0:
+                nxt = torch.argmax(logits, dim=-1, keepdim=True)  # greedy, matches device argmax
+            else:
+                logits = logits / temperature
+                if top_k:
+                    v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                    logits[logits < v[:, [-1]]] = -float("inf")
+                probs = F.softmax(logits, dim=-1)
+                nxt = torch.multinomial(probs, 1)
             idx = torch.cat([idx, nxt], dim=1)
             # A model trained on documents joined by a separator token learns
             # to emit it at the end of each one; without this check a sample

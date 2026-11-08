@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
   s.scores = malloc(S * 4);
   s.kcache = malloc((size_t)L * S * D * 4);
   s.vcache = malloc((size_t)L * S * D * 4);
+  s.kv_len = 0;  // full seq_len caches
 
   // Golden prompt + reference logits from a simple text dump.
   FILE *gf = fopen(gold, "r");
