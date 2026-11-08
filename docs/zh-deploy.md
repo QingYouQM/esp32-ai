@@ -1,6 +1,6 @@
 # 中文模型烧录部署（esp32_tinystories + artifacts/zh）
 
-状态：模型与解码表已就绪并通过全部 host gate（2026-11-08），等板子到手按本文执行。
+状态：story4 模型与解码表已就绪并通过全部 host gate（2026-11-08），等板子到手按本文执行。
 
 ## 产物清单
 
@@ -17,21 +17,23 @@
 python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/zh/tokenizer.json
 ```
 
-## 已通过的验收记录
+## 已通过的验收记录（story4，新语料 59,721 篇 / 7.2M token 重训）
 
 - verify.c：C int4 路径 vs PyTorch golden，max|diff|=1e-5，top-1 一致 → PASS
 - staging_verify.c：int8 驻留 == int4、钩子分发 57/57、头部校验全绿 → PASS (0 failures)
-- ppl（`data/zh/vocab-16384/val.bin`）：fp32 CE 4.0644 / int8 CE 4.0659，量化代价 +0.0015 nats
-- PC 贪婪解码（temperature 0，与板端 argmax 一致）：故事成篇 ~200 字，EOT 前自然收尾
+- ppl（`data/zh/vocab-16384/val.bin`）：fp32 CE 3.0897 / int8 CE 3.0904，量化代价 +0.0007 nats
+  （训练 fp32 val 3.0088 / ppl 20.26，int4 代价 ~0.08）
+- PC 贪婪解码（temperature 0，与板端 argmax 一致）：主人公稳定（小明→爸爸），
+  残留问题是贪婪短语复读（"闪电划破长空"×3），重复惩罚为后续固件增强（见下）
 
-## 固件已做的中文适配
+## 已做的中文适配
 
-- `PROMPT_IDS = {484, 259}`（「一天，」）
+- `PROMPT_IDS = {524, 258}`（「一天，」，story4 新 tokenizer；旧 story3 的 {484,259} 已作废）
 - `USE_DISPLAY 0`（display.h 只有 ASCII 点阵，汉字走串口）
-- `N_GENERATE = 230`（1.14 字/token 下 200 字的兜底上限）
+- `N_GENERATE = 230`（新语料压缩率 1.70 字/token，200 字 ≈ 118 token，230 是兜底）
 - `DEV_SEQ 256`：KV cache 按 256 分配（fp32 下 3.15MB，否则 PSRAM 爆）
 - `STAGE_HEAD_INT8 0`：head 不驻留 int8（省 3.15MB，走 flash int4 直读）
-- EOT(id 0) 停止判断已存在（上一轮已加）
+- EOT(id 0) 停止判断已存在
 
 PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余 ~1.6MB。
 
@@ -63,7 +65,7 @@ PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余
 
 ## 已知边界
 
-- 模型质量天花板：语料 523 万 token，中段逻辑漂移、他/她混用是模型问题，
-  非固件问题；升级路径 = 新语料重训（待办，需确认后开跑）
+- 模型质量：新语料后主人公漂移已解决；贪婪解码的短语复读计划用重复惩罚
+  （固件 argmax 前压已生成 token 的 logits，`sample.py` 同步实现保证验收一致）
 - 端侧中文输入未做（`runtime/bpe_tokenizer.h` 仍 ASCII-only）；prompt 烘焙在固件里
 - greedy 生成确定性输出，同样 prompt 永远同一篇故事（验收基线即 PC 上的输出）

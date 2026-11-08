@@ -150,3 +150,19 @@ story3（ple-zh-story3-s0）已走完整条片上部署管线，等板子即刷�
   d:/CodingTrash/tools/w64devkit 的 gcc 16.2
 - 部署步骤见 `artifacts/zh/DEPLOY.md`；PC 验收（temperature 0 贪婪，与板端一致）
   故事成篇 ~200 字，天花板仍是语料（他/她混用、指代漂移）
+
+## story4 重训（2026-11-08 晚）
+
+用户拍板 A→B 顺序：先交付 story4 产物，重复惩罚作为后续固件增强。
+
+- 合并语料：synth_story.jsonl(41,433 篇) + synth_story_q35.jsonl(18,288 篇新蒸)
+  = 59,721 篇 / 45.4MB，字节级拼接零坏行，备份 synth_story.jsonl.story4-base
+- prepare_zh 重建：train 7,205,420 token（旧料 1.38 倍），压缩率 1.70 字/token
+  （旧 1.14），新 tokenizer 指纹已随 checkpoint 记录
+- 训练：5000 步 491 秒（10.2 步/s），final val 3.0088 / ppl 20.26（story3: 3.94/53.7）
+- 导出：artifacts/zh/model.bin 11.87MB；三 gate 全绿（verify 1e-5、staging 0 失败、
+  ppl fp32 3.0897 / int8 3.0904，量化代价 +0.0007 nats，int4 代价 ~0.08）
+- 验收：主人公漂移已解决（小明→爸爸全程稳定）；贪婪解码有短语复读
+  （"闪电划破长空"×3），温度 0.8 下无复读且成篇（估 7.5/10）
+- 新 prompt ids：「一天，」= {524, 258}（story4 tokenizer），ino 已同步
+- 待办 B：板端+sample.py 同步加重复惩罚（纯解码期，不碰训练/权重）

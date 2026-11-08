@@ -46,7 +46,7 @@
 // 512 is what makes the fp32 KV cache fit alongside the staged core.
 #define DEV_SEQ 256
 
-static const int PROMPT_IDS[] = {484, 259}; // "一天，"
+static const int PROMPT_IDS[] = {524, 258}; // "一天，" (zh-story4 tokenizer)
 // Backstop only: the model closes its own story with the end-of-text token
 // (id 0) and the loop below stops there, which lands near 120 tokens for a
 // 150-200 character Chinese story.
