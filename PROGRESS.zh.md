@@ -177,3 +177,28 @@ story3（ple-zh-story3-s0）已走完整条片上部署管线，等板子即刷�
 - 效果（story4 + 惩罚 1.30 + 贪婪）："闪电划破长空"×3 → ×1，故事完整成篇，
   自然收尾"终于松了一口气"。该输出即板端将逐字输出的内容
 - 纯解码期改动：不碰训练/权重/golden，story4 产物与三 gate 结果不受影响
+
+## 屏幕接入：1.54" ST7789（2026-11-13）
+
+板子确认为小智 AI ESP32-S3-N16R8 + XZ-AI_KZBV1.7 扩展板，屏是 1.54 寸 ST7789 240x240，
+插扩展板的 8 针 TFT 座。引脚取自厂商《小智控制固件接线说明》并与 2.5.2 源码的
+`main/boards/bread-compact-wifi-lcd/config.h` 逐条核对一致：
+
+- SCK 21 / MOSI 47 / RST 45 / DC 40 / CS 41 / BLK 42（1.3" 的 7 针座没有 CS）
+- 原 display.h 的 TFT 分支写的是 10/7/6/12/11，其中 **7 是喇叭 DOUT、6 是麦克风 DIN**，
+  照原样开显示会把 I2S 音频带死；而且背光脚从未驱动，屏只会全黑。已全部改掉
+- 1.54" 是 IPS，需要 `invertDisplay(true)`；SPI 4 线跑 40MHz
+
+中文字库：Adafruit 内置字体只有 6x8 ASCII，中文会被整段丢弃。新增
+`research/zh/gen_cjk_font.py`：从 corpus.txt 提取全部字符（BMP 以内，跳过 10 个
+emoji 和一个 U+FFFD），SimSun 16x16 1bpp 烤成 `generated/cjk_font.h`，4,014 字形
+/ 125KB flash。BPE token 会切断 UTF-8 多字节序列，`display_puts()` 把残缺尾巴
+留到下一次调用续接。
+
+- 排版：15 字 × 15 行 = 225 字，200 字故事单屏够用；超屏清屏重画
+- 验证（无硬件）：桩 Arduino 头文件真编译 display.h，喂跨 token 的「一天，」，
+  一字一次 drawBitmap、换行与光标推进全部正确；app 只涨 125KB，1MB 分区仍够
+- **WiFi 仍未接**：固件里没有任何 WiFi 代码；真正卡点是 app 分区 1MB
+  （WiFi 栈 ~1MB）与 30~60s 阻塞式 setup()。要上得先重排分区：
+  app 2.75MB + model 12MB @0x2D0000，届时 `deploy.sh` 的 PART_OFFSET 同步改
+

@@ -28,10 +28,10 @@
 #include "../../runtime/llm.h"
 #include "generated/vocab.h"
 
-// Set to 1 once a display is wired up - see display.h.
-// Leave 0 to run serial-only (no panel needed). The Chinese model needs this:
-// display.h only carries a 6x8 ASCII font, so Chinese goes out over serial.
-#define USE_DISPLAY 0
+// On-device 1.54" ST7789 (expansion board's 8-pin TFT socket). display.h now
+// carries a 16x16 CJK font (generated/cjk_font.h), so the story renders on the
+// panel as well as over serial. Set to 0 for a serial-only run.
+#define USE_DISPLAY 1
 #if USE_DISPLAY
 #include "display.h"
 #endif

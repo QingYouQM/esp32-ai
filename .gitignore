@@ -20,6 +20,9 @@ runs/
 # headers each sketch generates from those artifacts
 firmware/**/generated/
 
+# vendor board bundle (958MB: tutorial PDFs, demo videos, firmware blobs)
+/小智AI教程*/
+
 # raw video / recordings (demo footage - keep out of the repo)
 video/
 videos/

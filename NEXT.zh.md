@@ -59,21 +59,22 @@ PROGRESS.zh.md 是滚动实验日志，本文是待办路线图。所有代码�
     --save-every 250 --amp
   ```
 
-## 4. 端侧固件适配（未动，位置已核实）
+## 4. 端侧固件适配（2026-11-13 更新）
 
-- `firmware/esp32_tinystories/esp32_tinystories.ino:31` `USE_DISPLAY 1 → 0`：
-  display.h 只有 6x8 ASCII 点阵（display.h:40 `CW 6`），汉字只能走串口
-- `ino:38` `PROMPT_IDS[]` 现在编码英文 "Once upon a time"。2026-10-21 实测：
+- ~~显示屏~~ 已完成：板子是 XZ-AI 扩展板 + 1.54" ST7789 240x240（8 针座），
+  引脚 SCK21/MOSI47/RST45/DC40/CS41/BLK42，`USE_DISPLAY 1`，中文走
+  `generated/cjk_font.h`（4,014 字形 16x16，125KB）。细节见 PROGRESS.zh.md
+- `PROMPT_IDS` 现为「一天，」= {524, 258}（story4 tokenizer）。2026-10-21 实测：
   无提示词（仅以 EOT id 0 起步）生成质量**优于**带主题 prompt——模型自选
-  "小X是……"式舒适开局，叙事弧更完整。可简化为 `{0}`，或写死一个中文开头
-  （token ids 从 `data/zh/vocab-16384/tokenizer.json` 编码，可写个小脚本）
-- `ino:39` `N_GENERATE = 130`：仅作兜底。argmax 循环已在 `best == 0`（EOT）处
-  break（2026-10-21 加），模型自停落在 ~116 token（实测 110~137）；中文故事
-  1.73 汉字/token，130 token 装 150~200 汉字宽裕
-- `ino:149-150` KV cache 是 `float`（fp32），两片 kcache+vcache 直接让 PSRAM 爆表；
-  **必须改 fp16**（int8 也可以试，注意精度）
+  "小X是……"式舒适开局，叙事弧更完整。仍可简化成 `{0}` 对比
+- `N_GENERATE = 230`：仅作兜底，EOT 命中即停（~118 token / 200 字）
+- KV cache：没有改 fp16，改为 `DEV_SEQ 256` + fp32（3.15MB），配合
+  `STAGE_HEAD_INT8 0` 把 PSRAM 压到 6.2/8MB。旧计划"必须改 fp16"已作废
 - `runtime/bpe_tokenizer.h:5` ASCII-only（`>= 0x80` 拒绝）：要端侧中文输入得扩展编码器；
   偷懒方案是 PC 端预编码 prompt、固件里写死 ids
+- **WiFi（唯一未动的）**：固件里没有任何 WiFi 代码。要先重排分区
+  （app 1MB → 2.75MB，model 14.87MB → 12MB @0x2D0000，`deploy.sh` 的
+  `PART_OFFSET` 同步改），并把 `setup()` 里 30~60s 的阻塞生成改成任务
 - 导出命令（注意 tokenizer 指向中文 vocab）：
 
   ```bash

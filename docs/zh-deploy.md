@@ -29,7 +29,7 @@ python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/
 ## 已做的中文适配
 
 - `PROMPT_IDS = {524, 258}`（「一天，」，story4 新 tokenizer；旧 story3 的 {484,259} 已作废）
-- `USE_DISPLAY 0`（display.h 只有 ASCII 点阵，汉字走串口）
+- `USE_DISPLAY 1`：1.54" ST7789 240x240（扩展板 8 针座），16x16 汉字点阵（见下节）
 - `N_GENERATE = 230`（新语料压缩率 1.70 字/token，200 字 ≈ 118 token，230 是兜底）
 - `DEV_SEQ 256`：KV cache 按 256 分配（fp32 下 3.15MB，否则 PSRAM 爆）
 - `STAGE_HEAD_INT8 0`：head 不驻留 int8（省 3.15MB，走 flash int4 直读）
@@ -38,6 +38,30 @@ python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/
 - EOT(id 0) 停止判断已存在
 
 PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余 ~1.6MB。
+
+## 屏幕（1.54" ST7789 240x240，扩展板 8 针座）
+
+引脚来自厂商接线说明与 2.5.2 源码的 `bread-compact-wifi-lcd/config.h`，两边一致：
+
+| 信号 | GPIO | 备注 |
+|---|---:|---|
+| SCL (SCK) | 21 | |
+| SDA (MOSI) | 47 | |
+| RES (RST) | 45 | |
+| DC | 40 | |
+| CS | 41 | 1.3" 的 7 针座没有这根 |
+| BLK | 42 | **必须拉高**，否则屏全黑 |
+
+- 原 display.h 的 TFT 分支写的是 10/7/6/12/11，其中 **7 是喇叭 DOUT、6 是数字麦克风 DIN**，
+  直接开会把 I2S 带死；已全部改成上表
+- IPS 面板需要 `invertDisplay(true)`，否则黑白颠倒
+- 字库：Adafruit 内置字体仅 ASCII，中文走 `generated/cjk_font.h`
+  （16x16 1bpp，4,014 字形，125KB flash）。语料或词表变了要重烤：
+  ```
+  uv run --no-project --with pillow python research/zh/gen_cjk_font.py
+  ```
+- 排版：240/16 = 15 字 × 15 行 = 225 字，200 字故事单屏装得下；超屏清屏重画
+- BPE token 会切断 UTF-8，`display_puts()` 把残缺序列留到下一次调用续接
 
 ## 烧录步骤（板子到手后）
 
