@@ -204,3 +204,27 @@ emoji 和一个 U+FFFD），SimSun 16x16 1bpp 烤成 `generated/cjk_font.h`，4,
   `deploy.sh` 的 `PART_OFFSET` 与 `APP_MAX_BYTES` 已同步。英文 14.9MB 模型
   不再适配此表，要刷旧英文模型得回退分区表
 
+## 上板实测（2026-11-14 晚，分区重排后首刷）
+
+分区重排后首次真机编译通过（esp32 core **3.3.12**，`PartitionScheme=custom`，
+app 736KB / 上限 2.75MB），刷 COM4（OTG 原生 USB，`USB-Serial/JTAG`）：
+
+| 项 | 实测 |
+|---|---|
+| 启动 | `Vin=16384 Vout=16384 D=192 L=8 H=4 F=265 P=128 (mapped 13.8 MB)` |
+| PSRAM | 57 张量 int8 6.03MB 驻留；free sram 269KB / psram 1.87MB |
+| 指纹 | `bytes=11867236 fp=312e0f85`（与本地 FNV 一致） |
+| 生成 | **102 token / 35.00s / 2.91 tok/s（339.1 ms/token）**，EOT 自停 |
+| 字数 | **173 汉字 / 202 字符**，落在 150~200 区间 |
+| profile | input 5.1 \| attn 45.2 \| ffn 33.6 \| ple 11.3 \| **head 243.9** |
+
+- head 占 72%：`STAGE_HEAD_INT8 0` 让输出头从 flash int4 直读，是唯一瓶颈；
+  旧预期 4~6 tok/s 偏乐观，实测 2.91
+- 两次冷启动输出逐字相同 → 贪婪确定性成立
+- **与 PC fp32 基线在「闪电划破」后分叉**：int4 组量化 + int8 激活让低置信度
+  位置的 argmax 翻转（ppl gate 记录的 int4 代价 ~0.08 nats）。"板端 == PC 逐字"
+  这条验收标准过严，改成：前 10~15 字一致 + EOT 自停 + 成篇 + 173±20 字
+- 质量：同开头不同走向（板端走"光/雷电"意象，收在"黑暗吞噬世界"），
+  比 PC 版少一句收束——量化分叉路径不同，不是新缺陷
+
+

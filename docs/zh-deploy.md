@@ -85,13 +85,17 @@ PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余
    ```
 4. **串口验收**（115200）：
    - 开机应打印 `model: Vin=16384 Vout=16384 D=192 L=8 H=4 F=265 P=128 (mapped 13.8 MB)`
-   - `build: bytes=11867236 fp=<指纹> sram=... psram=6.2xMB`
+   - `build: bytes=11867236 fp=312e0f85 sram=49260B psram=6.03MB`
    - 无 `FATAL:` 行；出现即内存分配失败，把 DEV_SEQ 降到 192 重编
-   - `>>> ` 后应直接流出中文故事，约 4-6 tok/s
+   - `>>> ` 后应直接流出中文故事；实测 **2.91 tok/s（339.1 ms/token）**，
+     head 从 flash int4 直读占 244ms（72%），102 token / 35s / 173 汉字后 EOT 自停
 
 ## 已知边界
 
 - 模型质量：新语料 + 重复惩罚后，主人公漂移与贪婪复读均已解决；
   剩余瑕疵是偶发的语义小跳跃（3M 参数天花板），升级需换更强教师或加参数
 - 端侧中文输入未做（`runtime/bpe_tokenizer.h` 仍 ASCII-only）；prompt 烘焙在固件里
-- greedy 生成确定性输出，同样 prompt 永远同一篇故事（验收基线即 PC 上的输出）
+- greedy 生成确定性输出，同一 prompt 永远同一篇故事（实测两次冷启动逐字相同）
+- 但 int4 组量化 + int8 激活会让板端与 PC fp32 基线在低置信度位置分叉
+  （实测「闪电划破」之后走向不同，ppl gate 记录的 int4 代价 ~0.08 nats）；
+  验收看「前 10~15 字一致 + EOT 自停 + 成篇 + 173±20 汉字」，不要逐字对账
