@@ -271,5 +271,7 @@ matvec 只换指针、字节不动，输出应当逐字相同。
 WiFi 栈抢 CPU）；app **1.39MB / 2.75MB**（WiFi+WebServer 让固件从 736KB 翻倍），
 RAM 67.8KB，free sram 237KB（比无网时少 32KB）。
 
+日常怎么用（连热点、点按钮、故障排查、开发者开关）见 `docs/zh-usage.md`。
+
 
 
