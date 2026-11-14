@@ -198,6 +198,9 @@ emoji 和一个 U+FFFD），SimSun 16x16 1bpp 烤成 `generated/cjk_font.h`，4,
 - 排版：15 字 × 15 行 = 225 字，200 字故事单屏够用；超屏清屏重画
 - 验证（无硬件）：桩 Arduino 头文件真编译 display.h，喂跨 token 的「一天，」，
   一字一次 drawBitmap、换行与光标推进全部正确；app 只涨 125KB，1MB 分区仍够
+- **真机验证（2026-11-14）**：生成时逐字刷屏，173 字单屏（12 行）不翻页；
+  结束后 `display_stats()` 清屏换成收尾卡（ESP32-S3 / PLE TinyLM / 22.9M params /
+  zh-story4 / 2.9 t/s / 339 ms/token）
 - **WiFi 仍未接**：固件里没有任何 WiFi 代码；真正卡点只剩 30~60s 阻塞式 setup()
 - 分区已重排（2026-11-14）：app 1MB → **2.75MB**（WiFi + TLS 留量），model 移到
   **@0x2D0000 / 13.13MB**（`0x2D0000..0xFF0000`，model.bin 11.87MB 余 1.8MB）；
