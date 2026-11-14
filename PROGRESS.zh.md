@@ -251,5 +251,25 @@ matvec 只换指针、字节不动，输出应当逐字相同。
 - 要提速得动算法侧：int8 驻留（预解包，省解包计算，需 3.0MB）+ 砍 KV，
   或减小输出词表 / 分块 logits，单换存储位置没戏
 
+## WiFi 网页接口（2026-11-15）
+
+板子自己开热点，手机连上打开网页点一下就能要一篇，屏上同步逐字刷：
+
+- AP `PLE-TinyLM` / `tinystory`，网关 `192.168.4.1`——不把路由器密码存进固件
+- `GET /` 返回页面（PROGMEM，单独放 `web_page.h`：放 .ino 里会被 Arduino
+  预处理器当成 JS 函数原型，编译报 `asyncfunction does not name a type`）
+- `GET /start` 起一次生成；`GET /text?since=N` 返回增量 JSON，页面 400ms 轮询
+- 生成搬进独立任务（core 1、8KB 栈），`loop()` 只跑 `web.handleClient()`；
+  生成循环改成每 2 token `delay(0)`，让网页每 660ms 能拿到一批字
+
+**顺带修了个潜伏 bug**：`matvec_par` 原来把完成通知发给 setup 里记下的
+`main_h`，从别的任务调用时（网页任务）worker 把通知发给了 LoopTask、
+调用者自己永远等不到 → 卡死在第一个字之后。现在每次调用都用
+`xTaskGetCurrentTaskHandle()` 重新取句柄。
+
+实测：`/start` → **203 字符 / 102 token / 34.6s / 2.84 tok/s**（比裸跑 2.91 略低，
+WiFi 栈抢 CPU）；app **1.39MB / 2.75MB**（WiFi+WebServer 让固件从 736KB 翻倍），
+RAM 67.8KB，free sram 237KB（比无网时少 32KB）。
+
 
 

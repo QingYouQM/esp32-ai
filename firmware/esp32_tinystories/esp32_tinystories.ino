@@ -36,6 +36,18 @@
 #include "display.h"
 #endif
 
+// On-device web UI: the board raises its own access point, so no router
+// credentials live in the firmware and the demo works on any desk. Generation
+// moves to its own task (~35 s per story) and the web server keeps serving
+// throughout; see loop() below.
+#define ENABLE_WIFI 1
+#if ENABLE_WIFI
+#include <WiFi.h>
+#include <WebServer.h>
+#define AP_SSID "PLE-TinyLM"
+#define AP_PASS "tinystory"
+#endif
+
 // Chinese model (artifacts/zh): the head is NOT staged to int8 - core (3.0MB)
 // + head (3.15MB) + KV would not fit the 8MB PSRAM. The head runs straight
 // from its flash-resident int4 rows instead.
@@ -123,6 +135,9 @@ static void matvec_par(const QT *t, const float *x, float *y) {
   float xs;
   if (t->w8 == NULL || t->rows < 128) { MATVEC(t, x, y); return; }
   quantize_act(x, t->cols, xq, &xs);   // once; both cores read the result
+  // The caller need not be setup()'s task: the web UI generates from its own
+  // task, so the completion notification has to target whoever called us.
+  main_h = xTaskGetCurrentTaskHandle();
   job_t = t; job_xq = xq; job_xs = xs; job_y = y; job_split = t->rows / 2;
   xTaskNotifyGive(worker_h);
   matvec_i8_range(t, xq, xs, y, job_split, t->rows);
@@ -183,6 +198,74 @@ static void blink(uint8_t g) {
 #endif
 }
 
+// ---- WiFi AP + web UI -----------------------------------------------------
+// The board raises its own access point: no router credentials in the firmware.
+// Generation runs in its own task because a story takes ~35 s and the server
+// must keep answering while it does.
+#if ENABLE_WIFI
+static WebServer web(80);
+static char *g_text, *g_resp;      // PSRAM: story text and one JSON reply
+#define TEXT_CAP 4096
+#define RESP_CAP 16384
+static volatile int   g_len;
+static volatile bool  g_running;
+static volatile float g_tok_s, g_ms;
+
+static void generate_story();
+static void gen_task(void *);
+
+#include "web_page.h"
+
+// Minimal JSON string escaping: the model emits quotes and newlines, and the
+// page reads the text as JSON.
+static void json_escape(const char *src, int n, char *dst, int cap) {
+  int o = 0;
+  for (int i = 0; i < n && o + 7 < cap; i++) {
+    unsigned char c = (unsigned char)src[i];
+    if (c == '"' || c == '\\') { dst[o++] = '\\'; dst[o++] = (char)c; }
+    else if (c < 0x20) o += snprintf(dst + o, cap - o, "\\u%04x", c);
+    else dst[o++] = (char)c;
+  }
+  dst[o] = 0;
+}
+
+static void handle_root() { web.send_P(200, "text/html; charset=utf-8", PAGE); }
+
+static void handle_start() {
+  if (g_running) { web.send(409, "application/json", "{\"ok\":0}"); return; }
+  g_len = 0;
+  if (g_text) g_text[0] = 0;
+  g_running = true;
+  web.send(200, "application/json", "{\"ok\":1}");
+  xTaskCreatePinnedToCore(gen_task, "gen", 8192, NULL, 1, NULL, 1);
+}
+
+static void handle_text() {
+  int since = web.hasArg("since") ? web.arg("since").toInt() : 0;
+  if (since < 0) since = 0;
+  if (since > g_len) since = g_len;
+  int o = snprintf(g_resp, RESP_CAP,
+                   "{\"len\":%d,\"done\":%s,\"tps\":%.2f,\"ms\":%.0f,\"text\":\"",
+                   g_len, g_running ? "false" : "true",
+                   (double)g_tok_s, (double)g_ms);
+  json_escape(g_text + since, g_len - since, g_resp + o, RESP_CAP - o - 3);
+  strcat(g_resp, "\"}");
+  web.send(200, "application/json; charset=utf-8", g_resp);
+}
+
+static void start_network() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(AP_SSID, AP_PASS);
+  web.on("/", handle_root);
+  web.on("/start", handle_start);
+  web.on("/text", handle_text);
+  web.begin();
+  Serial.printf("wifi : AP \"%s\" / \"%s\"  ip %s\n", AP_SSID, AP_PASS,
+                WiFi.softAPIP().toString().c_str());
+  Serial.println("web  : http://192.168.4.1/");
+}
+#endif
+
 // Emit one token to every active output (serial always; panel when enabled).
 static void emit(int tok) {
   if (tok >= VOCAB_N) return;
@@ -194,6 +277,15 @@ static void emit(int tok) {
   if ((int)Serial.availableForWrite() >= len) Serial.write(bytes, len);
 #if USE_DISPLAY
   display_puts(bytes, len);
+#endif
+#if ENABLE_WIFI
+  // The web page polls for everything past the offset it already has, so the
+  // story only needs to be accumulated, not pushed.
+  if (g_text && g_len + len < TEXT_CAP) {
+    memcpy(g_text + g_len, bytes, len);
+    g_len += len;
+    g_text[g_len] = 0;
+  }
 #endif
 }
 
@@ -208,6 +300,89 @@ static inline void seen_mark(int tok) {
 static inline int seen_has(int tok) {
   return seen[tok >> 3] & (0x80u >> (tok & 7));
 }
+
+// One story from the bundled prompt to EOT. Callable from setup (serial
+// only) and from the web task; every output is fed through emit().
+static void generate_story() {
+#if USE_DISPLAY
+  display_home();
+#endif
+  Serial.print(">>> ");
+  int n_prompt = sizeof(PROMPT_IDS) / sizeof(int);
+  int pos = 0, tok = 0;
+  int64_t decode_us = 0;
+  int decoded = 0;
+
+  memset(seen, 0, sizeof(seen));  // fresh story, fresh penalty state
+  for (int i = 0; i < n_prompt; i++) {  // prime with the prompt
+    tok = PROMPT_IDS[i];
+    seen_mark(tok);
+    emit(tok);
+    llm_forward(&model, tok, pos++, &s);
+  }
+
+  llm_profile_reset(&s);
+
+  int64_t t_start = esp_timer_get_time();
+  for (int step = 0; step < N_GENERATE && pos < DEV_SEQ; step++) {
+#if REPETITION_PENALTY_PCT != 100
+    // CTRL-style penalty over every token seen so far. Applied to a fresh
+    // logits buffer each step, so penalties never accumulate. Must stay in
+    // lockstep with generate(repetition_penalty=...) in src/model.py.
+    for (int v = 0; v < model.out_vocab; v++) {
+      if (seen_has(v)) {
+        s.logits[v] = (s.logits[v] > 0.f)
+                          ? s.logits[v] / REPETITION_PENALTY
+                          : s.logits[v] * REPETITION_PENALTY;
+      }
+    }
+#endif
+    int best = 0; float bv = -1e30f;
+    for (int v = 0; v < model.out_vocab; v++)
+      if (s.logits[v] > bv) { bv = s.logits[v]; best = v; }
+    if (best == 0) break;  // end-of-text token: the model closed the story
+    tok = best;
+    seen_mark(tok);
+    emit(tok);
+    blink((step & 1) ? 40 : 8);
+
+    int64_t d0 = esp_timer_get_time();
+    llm_forward(&model, tok, pos++, &s);
+    decode_us += esp_timer_get_time() - d0;
+    decoded++;
+    if ((step & 1) == 0) delay(0);  // yield to the web task every two tokens
+  }
+  int64_t total_us = esp_timer_get_time() - t_start;
+
+  Serial.printf("\n\n--- %d tokens in %.2f s ---\n", decoded, total_us / 1e6);
+  Serial.printf("throughput: %.2f tok/s   (%.1f ms/token)\n",
+                decoded * 1e6 / total_us, decode_us / 1000.0 / decoded);
+  if (s.profile.calls) {
+    float n = (float)s.profile.calls * 1000.f;
+    Serial.printf("profile ms/token: input %.1f | attn %.1f | ffn %.1f | ple %.1f | head %.1f\n",
+                  s.profile.input_us / n, s.profile.attn_us / n,
+                  s.profile.ffn_us / n, s.profile.ple_us / n,
+                  s.profile.head_us / n);
+  }
+#if USE_DISPLAY
+  display_stats(decoded * 1e6f / decode_us, decode_us / 1000.0f / decoded);
+#endif
+#if ENABLE_WIFI
+  if (decoded > 0) {
+    g_tok_s = decoded * 1e6f / (float)total_us;
+    g_ms = decode_us / 1000.0f / (float)decoded;
+  }
+#endif
+  blink(0);
+}
+
+#if ENABLE_WIFI
+static void gen_task(void *) {
+  generate_story();
+  g_running = false;
+  vTaskDelete(NULL);
+}
+#endif
 
 void setup() {
   Serial.begin(115200);
@@ -269,7 +444,6 @@ void setup() {
   Serial.printf("weights-> PSRAM  %d tensors int8, %.2f MB allocated\n",
                 staged, psram_used / 1048576.0);
 
-  main_h = xTaskGetCurrentTaskHandle();
   if (xTaskCreatePinnedToCore(worker_main, "mv", 4096, NULL, 2, &worker_h, 0) == pdPASS) {
     // After the worker exists: matvec_par notifies worker_h.
     model.layer_matvec = matvec_par;
@@ -293,68 +467,21 @@ void setup() {
                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024.0,
                 heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1048576.0);
 
-  // ---- generate ----
-  Serial.print(">>> ");
-  int n_prompt = sizeof(PROMPT_IDS) / sizeof(int);
-  int pos = 0, tok = 0;
-  int64_t decode_us = 0;
-  int decoded = 0;
-
-  memset(seen, 0, sizeof(seen));  // fresh story, fresh penalty state
-  for (int i = 0; i < n_prompt; i++) {  // prime with the prompt
-    tok = PROMPT_IDS[i];
-    seen_mark(tok);
-    emit(tok);
-    llm_forward(&model, tok, pos++, &s);
-  }
-
-  llm_profile_reset(&s);
-
-  int64_t t_start = esp_timer_get_time();
-  for (int step = 0; step < N_GENERATE && pos < DEV_SEQ; step++) {
-#if REPETITION_PENALTY_PCT != 100
-    // CTRL-style penalty over every token seen so far. Applied to a fresh
-    // logits buffer each step, so penalties never accumulate. Must stay in
-    // lockstep with generate(repetition_penalty=...) in src/model.py.
-    for (int v = 0; v < model.out_vocab; v++) {
-      if (seen_has(v)) {
-        s.logits[v] = (s.logits[v] > 0.f)
-                          ? s.logits[v] / REPETITION_PENALTY
-                          : s.logits[v] * REPETITION_PENALTY;
-      }
-    }
+#if ENABLE_WIFI
+  g_text = (char *)ps_or_die(TEXT_CAP, "story text");
+  g_resp = (char *)ps_or_die(RESP_CAP, "http reply");
+  g_text[0] = 0;
+  start_network();
+#else
+  generate_story();
 #endif
-    int best = 0; float bv = -1e30f;
-    for (int v = 0; v < model.out_vocab; v++)
-      if (s.logits[v] > bv) { bv = s.logits[v]; best = v; }
-    if (best == 0) break;  // end-of-text token: the model closed the story
-    tok = best;
-    seen_mark(tok);
-    emit(tok);
-    blink((step & 1) ? 40 : 8);
-
-    int64_t d0 = esp_timer_get_time();
-    llm_forward(&model, tok, pos++, &s);
-    decode_us += esp_timer_get_time() - d0;
-    decoded++;
-    if ((step & 7) == 0) delay(0);  // feed the task WDT ~every 8 tokens
-  }
-  int64_t total_us = esp_timer_get_time() - t_start;
-
-  Serial.printf("\n\n--- %d tokens in %.2f s ---\n", decoded, total_us / 1e6);
-  Serial.printf("throughput: %.2f tok/s   (%.1f ms/token)\n",
-                decoded * 1e6 / total_us, decode_us / 1000.0 / decoded);
-  if (s.profile.calls) {
-    float n = (float)s.profile.calls * 1000.f;
-    Serial.printf("profile ms/token: input %.1f | attn %.1f | ffn %.1f | ple %.1f | head %.1f\n",
-                  s.profile.input_us / n, s.profile.attn_us / n,
-                  s.profile.ffn_us / n, s.profile.ple_us / n,
-                  s.profile.head_us / n);
-  }
-#if USE_DISPLAY
-  display_stats(decoded * 1e6f / decode_us, decode_us / 1000.0f / decoded);
-#endif
-  blink(0);
 }
 
-void loop() { delay(10000); }
+void loop() {
+#if ENABLE_WIFI
+  web.handleClient();
+  delay(2);
+#else
+  delay(10000);
+#endif
+}

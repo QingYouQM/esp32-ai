@@ -89,6 +89,11 @@ PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余
    - 无 `FATAL:` 行；出现即内存分配失败，把 DEV_SEQ 降到 192 重编
    - `>>> ` 后应直接流出中文故事；实测 **2.91 tok/s（339.1 ms/token）**，
      head 从 flash int4 直读占 244ms（72%），102 token / 35s / 173 汉字后 EOT 自停
+5. **网页验收**（连板子自带热点）：
+   - 手机/电脑连 `PLE-TinyLM`（密码 `tinystory`），浏览器开 `http://192.168.4.1/`
+   - 点「再来一篇」→ 网页和屏幕同时逐字出故事，约 35 秒后停在末尾，网页显示 tok/s
+   - 串口应打印 `wifi : AP "PLE-TinyLM" / "tinystory"  ip 192.168.4.1`
+   - 实测一遍约 203 字符 / 102 token / 34.6 秒 / 2.84 tok/s
 
 ## 已知边界
 
