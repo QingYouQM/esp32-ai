@@ -6,7 +6,7 @@
 
 | 文件 | 用途 |
 |---|---|
-| `model.bin` | int4 权重，烧进 flash `model` 分区（0x110000），11.87MB / 分区 14.87MB |
+| `model.bin` | int4 权重，烧进 flash `model` 分区（0x2D0000），11.87MB / 分区 13.13MB |
 | `tokenizer.json` | 导出时校验过的自训 BPE 16384（与 story3 训练指纹一致） |
 | `golden.txt` / `golden.npz` | PyTorch 4-bit 模型 last-pos logits 参考 |
 | `verify.exe` / `staging_verify.exe` / `ppl_int8.exe` / `ppl_fp32.exe` | host gate 工具（w64devkit gcc 16.2 编译） |
@@ -71,20 +71,20 @@ PSRAM 终账：core int8 3.0MB + KV 3.15MB + logits 0.06MB ≈ 6.2MB / 8MB，余
    - Arduino CLI 示例：
      ```
      arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,\
-     PartitionScheme=no_extra_ota ... firmware/esp32_tinystories
+     PartitionScheme=custom ... firmware/esp32_tinystories
      ```
    - 注意：必须选用 `firmware/esp32_tinystories/partitions.csv` 的自定义分区
-     （app 1MB / model 14.87MB @0x110000 / coredump）。
+     （app 2.75MB / model 13.13MB @0x2D0000 / coredump）。
 2. **烧模型分区**：
    ```
-   esptool --chip esp32s3 --port <COM口> --baud 921600 write_flash 0x110000 artifacts/zh/model.bin
+   esptool --chip esp32s3 --port <COM口> --baud 921600 write_flash 0x2D0000 artifacts/zh/model.bin
    ```
 3. **烧固件**：
    ```
    arduino-cli upload --fqbn <同编译> -p <COM口> firmware/esp32_tinystories
    ```
 4. **串口验收**（115200）：
-   - 开机应打印 `model: Vin=16384 Vout=16384 D=192 L=8 H=4 F=265 P=128 (mapped 15.6 MB)`
+   - 开机应打印 `model: Vin=16384 Vout=16384 D=192 L=8 H=4 F=265 P=128 (mapped 13.8 MB)`
    - `build: bytes=11867236 fp=<指纹> sram=... psram=6.2xMB`
    - 无 `FATAL:` 行；出现即内存分配失败，把 DEV_SEQ 降到 192 重编
    - `>>> ` 后应直接流出中文故事，约 4-6 tok/s

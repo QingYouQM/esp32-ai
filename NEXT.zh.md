@@ -72,9 +72,9 @@ PROGRESS.zh.md 是滚动实验日志，本文是待办路线图。所有代码�
   `STAGE_HEAD_INT8 0` 把 PSRAM 压到 6.2/8MB。旧计划"必须改 fp16"已作废
 - `runtime/bpe_tokenizer.h:5` ASCII-only（`>= 0x80` 拒绝）：要端侧中文输入得扩展编码器；
   偷懒方案是 PC 端预编码 prompt、固件里写死 ids
-- **WiFi（唯一未动的）**：固件里没有任何 WiFi 代码。要先重排分区
-  （app 1MB → 2.75MB，model 14.87MB → 12MB @0x2D0000，`deploy.sh` 的
-  `PART_OFFSET` 同步改），并把 `setup()` 里 30~60s 的阻塞生成改成任务
+- **WiFi（唯一未动的）**：固件里没有任何 WiFi 代码。分区已重排完（2026-11-14：
+  app 2.75MB，model 13.13MB @0x2D0000，`deploy.sh` 的 `PART_OFFSET` /
+  `APP_MAX_BYTES` 同步），剩下把 `setup()` 里 30~60s 的阻塞生成改成任务
 - 导出命令（注意 tokenizer 指向中文 vocab）：
 
   ```bash

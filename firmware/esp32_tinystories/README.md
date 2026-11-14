@@ -1,8 +1,14 @@
 # ESP32-S3 on-chip inference
 
-This sketch runs the 28.9M-parameter PLE TinyLM on an ESP32-S3 N16R8. The model
-lives in the custom `model` flash partition at `0x110000`; the tied
+This sketch runs the PLE TinyLM on an ESP32-S3 N16R8. The application partition
+is 2.75 MiB so the sketch has room for WiFi and TLS; the model lives in the
+custom `model` flash partition at `0x2D0000` (13.125 MiB), and the tied
 embedding/output head is staged in PSRAM at boot.
+
+The English 28.9M-parameter model predates this layout: at 14.9 MB it no longer
+fits the model partition. Restore the previous `partitions.csv` (1 MiB app,
+model at `0x110000`) and the matching `PART_OFFSET` in `deploy.sh` before
+deploying it.
 
 ## Build and flash
 
@@ -67,6 +73,9 @@ The model payload only needs reflashing after a new export. Firmware-only change
 can be uploaded without rewriting the model partition.
 
 ## Expected boot output
+
+This block was captured under the old 1 MiB-app layout. The current table reports
+`mapped 13.8 MB`; the English model's own sizes and fingerprint are unchanged.
 
 The deployed model has SHA-256:
 

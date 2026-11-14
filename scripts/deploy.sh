@@ -70,7 +70,11 @@ case "$MODEL_KIND" in
     TOKENIZER=${TOKENIZER:-$ARTIFACTS/tokenizer.json}
     GOLDEN=${GOLDEN:-$ARTIFACTS/golden.txt}
     REQUIRED=("$MODEL" "$TOKENIZER")
-    PART_OFFSET=0x110000
+    # partitions.csv gives the application 2.75 MiB (WiFi and TLS need the room)
+    # and the model whatever is left before coredump, 13.125 MiB. The English
+    # 14.9 MB model no longer fits; restore the old table to deploy it.
+    PART_OFFSET=0x2D0000
+    APP_MAX_BYTES=2883584
     OPT_FLAGS='-O3'
     FETCH_HINT="  scripts/fetch_model.sh tinystories
   Downloads always install under artifacts/tinystories/. If a different path

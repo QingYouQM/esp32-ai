@@ -204,6 +204,16 @@ class ModelSelectionPicksMatchingParts(DeployHarness):
         self.assertIn("firmware/esp32_tinystories", joined)
         self.assertNotIn("esp32_barista", joined)
 
+    def test_tinystories_is_written_after_the_wider_app_partition(self):
+        # partitions.csv gives the app 2.75 MiB so WiFi fits; the model starts
+        # at 0x2D0000 and the compile is held to that same ceiling.
+        self.assertEqual(self.run_deploy("tinystories").returncode, 0)
+        flash = [c for c in self.calls() if "write_flash" in c]
+        self.assertEqual(len(flash), 1)
+        self.assertIn("0x2D0000 artifacts/tinystories/model.bin", flash[0])
+        compile_line = next(c for c in self.calls() if c.startswith("arduino-cli compile"))
+        self.assertIn("upload.maximum_size=2883584", compile_line)
+
     def test_the_flashed_binary_is_the_selected_model(self):
         self.assertEqual(self.run_deploy("barista").returncode, 0)
         flash = [c for c in self.calls() if "write_flash" in c]
