@@ -351,9 +351,6 @@ void setup() {
                   s.profile.ffn_us / n, s.profile.ple_us / n,
                   s.profile.head_us / n);
   }
-#if USE_DISPLAY
-  display_stats(decoded * 1e6f / decode_us, decode_us / 1000.0f / decoded);
-#endif
   blink(0);
 }
 
