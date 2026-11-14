@@ -95,6 +95,21 @@ static void display_puts(const unsigned char *s, int len) {
   oled.display();
 }
 
+// Closing stats card shown when generation finishes.
+static void display_stats(float tok_s, float ms) {
+  oled.clearDisplay();
+  oled.setTextColor(OLED_WHITE);
+  oled.setTextSize(1);
+  oled.setCursor(0, 0);  oled.print("ESP32-S3  PLE LLM");
+  oled.setCursor(0, 14); oled.print("28.9M params");
+  oled.setCursor(0, 24); oled.print("in 320KB of RAM");
+  oled.setTextSize(2);
+  oled.setCursor(0, 40); oled.print(tok_s, 1); oled.print(" tok/s");
+  oled.setTextSize(1);
+  oled.setCursor(0, 57); oled.print(ms, 0); oled.print(" ms/token");
+  oled.display();
+}
+
 // ================= 1.54" SPI TFT (ST7789 240x240, 8-pin socket) ============
 //
 // Pins are the XZ-AI expansion board's 8-pin TFT socket, not free wiring:
@@ -200,6 +215,21 @@ static void display_puts(const unsigned char *s, int len) {
       need = have = 0;
     }
   }
+}
+
+// Closing stats card shown when generation finishes.
+static void display_stats(float tok_s, float ms) {
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(4, 10);  tft.print("ESP32-S3");
+  tft.setCursor(4, 40);  tft.print("PLE TinyLM");
+  tft.setCursor(4, 90);  tft.print("22.9M params");
+  tft.setCursor(4, 120); tft.print("zh-story4");
+  tft.setTextSize(3);
+  tft.setCursor(4, 170); tft.print(tok_s, 1); tft.print(" t/s");
+  tft.setTextSize(2);
+  tft.setCursor(4, 210); tft.print(ms, 0); tft.print(" ms/token");
 }
 
 #endif
