@@ -17,6 +17,13 @@
 python firmware/esp32_tinystories/tools/generate_vocab.py --tokenizer artifacts/zh/tokenizer.json
 ```
 
+板子自带 API 后还需要编码表（16,127 条 merge，编译后约 129KB flash）：
+```
+python firmware/esp32_tinystories/tools/generate_bpe_encode.py --tokenizer artifacts/zh/tokenizer.json
+python firmware/esp32_tinystories/tools/check_bpe_parity.py --gcc <w64devkit>/bin/gcc.exe
+```
+第二条在 PC 上编译 `bpe_encode.h` 并与 `tokenizers` 逐 id 对比，10 条样本必须全绿。
+
 ## 已通过的验收记录（story4，新语料 59,721 篇 / 7.2M token 重训）
 
 - verify.c：C int4 路径 vs PyTorch golden，max|diff|=1e-5，top-1 一致 → PASS
