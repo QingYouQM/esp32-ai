@@ -777,6 +777,159 @@ static bool json_find_true(const String &body, const char *key) {
   return strncmp(p, "true", 4) == 0;
 }
 
+// ---- question -> story opening ---------------------------------------------
+// The board has no instruction-following model, and no room for one: the 8 MB
+// of PSRAM cannot hold a 0.5B rewriter. What it does have is a very regular way
+// of being asked for a story. The shell comes off the two ends and what is
+// left is usually the opening itself:
+//
+//   请帮我写一个关于小猫找妈妈的故事 -> 小猫找妈妈
+//   给我讲个下雨天的故事             -> 下雨天
+//   能不能说一个勇敢的故事？         -> 勇敢
+//
+// Only the two ends are touched. A global delete would turn 小明写作业的故事
+// into 小明作业, because 写 is also an ordinary verb inside the topic.
+
+// Longest first where one entry is a prefix of another ("请帮我" before "帮我",
+// "有关于" before "有关", "写一个" before "写"). The bare verbs sit last and are
+// only ever matched at the start of the string.
+static const char *SHELL_HEAD[] = {
+    "请帮我", "请给我", "请你", "麻烦你", "麻烦", "帮我", "给我",
+    "我想要听", "想要听", "我想听", "我要听", "我想要", "想要", "想听", "能不能", "可不可以", "可以", "请问", "请",
+    "写一篇", "写一个", "写个", "讲一篇", "讲一个", "讲个",
+    "说一篇", "说一个", "说个", "编一篇", "编一个", "编个",
+    "来一篇", "来一个", "来个", "有关于", "关于", "有关",
+    "一篇", "一个", "一段", "一则",
+    "写", "讲", "说", "编",
+};
+
+static const char *SHELL_TAIL[] = {
+    "的小故事", "的故事", "小故事", "故事",
+    "好吗", "行吗", "谢谢", "吧", "啊", "呢", "吗",
+    "。", "！", "？", "?", "!", "，", ",", "：", ":", "\t", "\r", "\n",
+    "的",
+};
+
+static bool has_han(const char *s) {
+  for (const unsigned char *p = (const unsigned char *)s; *p; p++)
+    if (*p >= 0xE0 && *p <= 0xEF) return true;
+  return false;
+}
+
+static void trim_spaces(char *s) {
+  char *b = s;
+  while (*b == ' ' || *b == '\t' || *b == '\r' || *b == '\n') b++;
+  if (b != s) memmove(s, b, strlen(b) + 1);
+  int n = (int)strlen(s);
+  while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\t' ||
+                   s[n - 1] == '\r' || s[n - 1] == '\n')) s[--n] = 0;
+}
+
+static void strip_head(char *s) {
+  for (int guard = 0; guard < 16; guard++) {
+    trim_spaces(s);
+    bool hit = false;
+    for (size_t k = 0; k < sizeof(SHELL_HEAD) / sizeof(SHELL_HEAD[0]); k++) {
+      const size_t plen = strlen(SHELL_HEAD[k]);
+      if (!strncmp(s, SHELL_HEAD[k], plen)) {
+        memmove(s, s + plen, strlen(s + plen) + 1);
+        hit = true;
+        break;  // restart the table: a shorter prefix may follow
+      }
+    }
+    if (!hit) break;
+  }
+}
+
+static void strip_tail(char *s) {
+  for (int guard = 0; guard < 16; guard++) {
+    trim_spaces(s);
+    bool hit = false;
+    const size_t n = strlen(s);
+    for (size_t k = 0; k < sizeof(SHELL_TAIL) / sizeof(SHELL_TAIL[0]); k++) {
+      const size_t plen = strlen(SHELL_TAIL[k]);
+      if (plen && n >= plen && !strcmp(s + n - plen, SHELL_TAIL[k])) {
+        s[n - plen] = 0;
+        hit = true;
+        break;  // restart: "的故事" may expose "？"
+      }
+    }
+    if (!hit) break;
+  }
+}
+
+// Abstract themes ("勇敢", "友谊") are one or two hanzi with no scene in them:
+// the model would finish the sentence and stop. A short hand-written map turns
+// the frequent ones into the kind of concrete opening the corpus is made of.
+// Anything not in here falls through to the comma form below.
+static const struct { const char *key; const char *scene; } TOPIC_SCENE[] = {
+    {"勇敢", "小明一个人走夜路回家。"},
+    {"友谊", "小明和最好的朋友吵架了。"},
+    {"朋友", "小明在公园里认识了一个新朋友。"},
+    {"新同学", "今天幼儿园来了一个新同学。"},
+    {"分享", "小红有一块糖，弟弟也想吃。"},
+    {"诚实", "小明打碎了妈妈的花瓶，不敢说。"},
+    {"道歉", "小军弄坏了同桌的铅笔盒。"},
+    {"孝顺", "奶奶生病了，小红想给她煮一碗粥。"},
+    {"妈妈", "妈妈下班回家，累得坐在椅子上。"},
+    {"爸爸", "爸爸答应带小明去动物园，却要加班。"},
+    {"爷爷", "爷爷的院子里有一棵老槐树。"},
+    {"生日", "今天是小红的生日，可家里静悄悄的。"},
+    {"上学", "小明第一天上学，站在教室门口不敢进去。"},
+    {"考试", "小明考试没考好，不敢把卷子给妈妈看。"},
+    {"下雨", "下雨了，小明没带伞，站在校门口发呆。"},
+    {"下雨天", "下雨了，小明没带伞，站在校门口发呆。"},
+    {"下雪", "下雪了，小明第一次看见雪花。"},
+    {"迷路", "小猫在街上迷路了，找不到妈妈。"},
+    {"小猫", "小猫找不到妈妈了。"},
+    {"小狗", "小狗在门口等主人回家。"},
+    {"小兔子", "小兔子拔不出一个大萝卜。"},
+    {"小熊", "小熊要冬眠了，却怎么也睡不着。"},
+    {"恐龙", "小明在博物馆看见一具恐龙骨架。"},
+    {"太空", "小明晚上抬头数星星，一颗星星动了。"},
+    {"机器人", "小明捡到一个会说话的机器人。"},
+    {"魔法", "小明得到一支会写字的铅笔。"},
+    {"公主", "公主在王宫里迷路了。"},
+    {"海洋", "小鱼想去看看大海外面是什么。"},
+    {"森林", "小明在森林里迷路了。"},
+    {"搬家", "小明一家搬进了新房子。"},
+    {"宠物", "小明想养一只小狗，妈妈不同意。"},
+};
+
+// Turns an ask into an opening. Returns false when nothing usable is left, in
+// which case the caller keeps the original text: a bare continuation is still
+// a valid request and must not be silently replaced by a baked opening.
+static bool rewrite_question(const char *in, char *out, int cap) {
+  if (!in || !*in || !has_han(in) || cap < 16) return false;
+
+  char buf[160];
+  snprintf(buf, sizeof(buf), "%s", in);
+  strip_head(buf);
+  strip_tail(buf);
+  trim_spaces(buf);
+  if (!buf[0]) return false;
+
+  for (size_t k = 0; k < sizeof(TOPIC_SCENE) / sizeof(TOPIC_SCENE[0]); k++) {
+    if (!strcmp(buf, TOPIC_SCENE[k].key)) {
+      snprintf(out, cap, "%s", TOPIC_SCENE[k].scene);
+      return true;
+    }
+  }
+
+  const int n = (int)strlen(buf);
+  if (n <= 6) {
+    // One or two hanzi ("小猫", "勇敢"): a full stop would end the story before
+    // it starts, so leave the comma hanging and let the model carry it.
+    snprintf(out, cap, "%s，", buf);
+  } else {
+    const bool closed = (n >= 3) && (!strcmp(buf + n - 3, "。") ||
+                                     !strcmp(buf + n - 3, "！") ||
+                                     !strcmp(buf + n - 3, "？"));
+    snprintf(out, cap, "%s%s", buf, closed ? "" : "。");
+  }
+  return out[0] != 0;
+}
+
 static void api_send_error(int code, const char *msg) {
   // Escaped, not pasted: the hint below quotes JSON, and an unescaped quote
   // would turn the error into a body the client cannot parse.
@@ -821,6 +974,16 @@ static void handle_completions() {
     api_send_error(400, "no message text in request body: send {\"messages\":[{\"role\":"
                         "\"user\",\"content\":\"一天，\"}]} or {\"prompt\":\"一天，\"}");
     return;
+  }
+
+  // Ask-style input ("请帮我写一个关于小猫找妈妈的故事") has no
+  // instruction-following model behind it: strip the shell so what reaches the
+  // tokenizer is an opening the model can continue. ?raw=1 keeps the text as
+  // sent, for clients that already prime with a story opening.
+  if (!web.hasArg("raw")) {
+    char opening[192];
+    if (rewrite_question(prompt, opening, sizeof(opening)))
+      snprintf(prompt, sizeof(prompt), "%s", opening);
   }
 
   // A message longer than the 32-id prompt buffer is still a usable opening:
