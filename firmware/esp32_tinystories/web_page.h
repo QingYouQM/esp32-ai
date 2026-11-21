@@ -20,7 +20,7 @@ button:disabled{background:#333346;color:#777}
 #txt{white-space:pre-wrap;margin-top:20px;font-size:19px;line-height:1.95;min-height:45vh}
 </style>
 <h1>ESP32-S3 &middot; PLE TinyLM</h1>
-<div class="sub">22.9M 参数 &middot; 一篇约 170 字 &middot; 板载 1.54" 屏同步显示</div>
+<div class="sub">22.9M 参数 &middot; 一篇约 170 字 &middot; 板载 1.54" 屏同步显示 &middot; <a href="/wifi" style="color:#7f9bff">WiFi 设置</a></div>
 <button id="go" onclick="run()">再来一篇</button><span id="st"></span>
 <div id="txt"></div>
 <script>
