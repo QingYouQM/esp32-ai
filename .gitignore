@@ -30,3 +30,6 @@ videos/
 *.mov
 *.MOV
 *.MP4
+
+# local build output and throwaway test harnesses
+/build/
